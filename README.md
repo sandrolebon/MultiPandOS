@@ -1,2 +1,6 @@
 # MultiPandOS
- sadic s.o. project 24/25
+
+To compile the project:
+```bash
+mkdir -p build && pushd build && cmake .. && make && popd
+```
