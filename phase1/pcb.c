@@ -27,7 +27,7 @@ value persist in a PCB when it gets reallocated.*/
         return NULL;
     }
     else{
-        pcb_t* tmp = pcbFree_h.next;
+        pcb_t* tmp = container_of(pcbFree_h.next, pcb_t, p_list);
         list_del(pcbFree_h.next);
         
         INIT_LIST_HEAD(&tmp->p_list);
@@ -63,10 +63,10 @@ void insertProcQ(struct list_head* head, pcb_t* p) {
 pcb_t* headProcQ(struct list_head* head) {
     /*Return a pointer to the first PCB from the process queue whose head is pointed to by head. Do
 not remove this PCB from the process queue. Return NULL if the process queue is empty.*/
-    if(list_empty(&head)){
+    if(list_empty(head)){
         return NULL;
     } else {
-        return head->next;
+        return container_of(head->next, pcb_t, p_list);
     }
 }
 
@@ -112,7 +112,7 @@ pcb_t* removeChild(pcb_t* p) {
     /*Make the first child of the PCB pointed to by p no longer a child of p. Return NULL if initially
 there were no children of p. Otherwise, return a pointer to this removed first child PCB.*/
     if (!list_empty(&p->p_child)) {
-        pcb_t* tmp = p->p_child.next;
+        pcb_t* tmp = container_of(p->p_child.next, pcb_t, p_sib);
 
         tmp->p_parent = NULL;
         list_del(&tmp->p_sib);
