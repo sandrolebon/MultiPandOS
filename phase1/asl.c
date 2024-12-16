@@ -4,22 +4,26 @@ static semd_t semd_table[MAXPROC];
 static struct list_head semdFree_h = LIST_HEAD_INIT(semdFree_h);
 static struct list_head semd_h = LIST_HEAD_INIT(semd_h);
 
-/*Initialize the semdFree list to contain all the elements of the array static semd_t semdTable[MAXPROC].
-This method will be only called once during data structure initialization.*/
+/*
+    FUNZIONE CHIAMATA SOLO AD INIZIO PROGRAMMA
+
+    Inizializza la lista semdFree per fargli contenere [MAXPROC] semafori vuoti
+*/
 void initASL() {
     for (int i = 0; i < MAXPROC; i++) {
         list_add(&semd_table[i].s_link, &semdFree_h);
     }
 } 
 
+/*
+    Inserisce il processo p in fondo alla coda dei processi del semaforo con s_key = semAdd.
+    Se il semaforo interessato non fosse attivo, inizializza il semaforo e aggiunge il processo in coda.
 
-/*Insert the PCB pointed to by p at the tail of the process queue associated with the semaphore
-whose key is semAdd and set the semaphore address of p to semaphore with semAdd. If the
-semaphore is currently not active (i.e. there is no descriptor for it in the ASL), allocate a new
-descriptor from the semdFree list, insert it in the ASL (at the appropriate position), initialize
-all of the fields (i.e. set s_key to semAdd, and s_procq to mkEmptyProcQ()), and proceed as
-above. If a new semaphore descriptor needs to be allocated and the semdFree list is empty,
-return TRUE. In all other cases return FALSE.*/
+    semAdd = la key del semaforo interessato
+    p = il puntatore al processo da aggiungere in coda al semaforo desiderato
+
+    return: 0 se tutto è andato bene, 1 se il semaforo non era attivato e non ci sono semafori liberi da inizializzare
+*/
 int insertBlocked(int* semAdd, pcb_t* p) {
     semd_t* tmp;
     
@@ -44,11 +48,14 @@ int insertBlocked(int* semAdd, pcb_t* p) {
     }
 }
 
-/*Search the ASL for a descriptor of this semaphore. If none is found, return NULL; other-
-wise, remove the first (i.e. head) PCB from the process queue of the found semaphore de-
-scriptor and return a pointer to it. If the process queue for this semaphore becomes empty
-(emptyProcQ(s_procq) is TRUE), remove the semaphore descriptor from the ASL and return
-it to the semdFree list.*/
+/*
+    Rimuove il primo processo in coda nel semaforo il cui s_key = semAdd.
+    Se non dovessero esserci processi in coda, disattiva il semaforo e lo aggiunge ai semafori liberi.
+
+    semAdd = la s_key del semaforo interessato
+
+    return: puntatore al processo rimosso, oppure NULL se non esiste il semaforo / non erano presenti processi in coda al semaforo
+*/
 pcb_t* removeBlocked(int* semAdd) {
     semd_t* tmp;
     list_for_each_entry(tmp, &semd_h, s_link) {
