@@ -5,23 +5,35 @@ static struct list_head pcbFree_h = LIST_HEAD_INIT(pcbFree_h);
 static pcb_t pcbFree_table[MAXPROC];
 static int next_pid = 1;
 
-/*Initialize the pcbFree list to contain all the elements of the static array of MAXPROC PCBs.
-This method will be called only once during data structure initialization.*/
+/*
+    FUNZIONE CHIAMATA SOLO AD INIZIO PROGRAMMA
+
+    Inizializza la lista pcbFree per fargli contenere [MAXPROC] processi vuoti
+*/
 void initPcbs() {
     for (int i = 0; i < MAXPROC; i++) {
         list_add(&pcbFree_table[i].p_list, &pcbFree_h);
     }
 }
-    
-//Insert the element pointed to by p onto the pcbFree list.
+
+/*
+    Inserisce il processo p in coda alla lista dei processi liberi (pcbFree)
+
+    p = puntatore al processo interessato
+
+    return = VOID
+*/
 void freePcb(pcb_t* p) {
     list_add_tail(&p->p_list, &pcbFree_h);
 }
 
-/*Return NULL if the pcbFree list is empty. Otherwise, remove an element from the pcbFree
-list, provide initial values for ALL of the PCBs fields (i.e. NULL and/or 0) and then return
-a pointer to the removed element. PCBs get reused, so it is important that no previous
-value persist in a PCB when it gets reallocated.*/
+/*
+    Rimuove dalla lista dei processi liberi un processo e lo inizializza con tutti i valori a NULL o a 0
+
+    input = VOID
+
+    return = puntatore al processo inizializzato, NULL se non esistono processi liberi
+*/
 pcb_t* allocPcb() {
     if(list_empty(&pcbFree_h)){
         return NULL;
@@ -44,23 +56,47 @@ pcb_t* allocPcb() {
     }
 }
 
-//This method is used to initialize a variable to be head pointer to a process queue.
+/*
+    Funzione usata per inizializzare un processo perché faccia da testa di una lista
+
+    head = puntatore ad un elemento list_head da inizializzare come lista
+
+    return = VOID
+*/
 void mkEmptyProcQ(struct list_head* head) {
     INIT_LIST_HEAD(head);
 }
 
-//Return TRUE if the queue whose head is pointed to by head is empty. Return FALSE otherwise.
+/*
+    Controlla se la coda passata è vuota
+
+    head = testa della coda da controllare
+
+    return = 1 se la lista è vuota, 0 se la lista non è vuota
+*/
 int emptyProcQ(struct list_head* head) {
     return list_empty(head);
 }
 
-//Insert the PCB pointed by p into the process queue whose head pointer is pointed to by head.
+/*
+    Inserisce il processo p nella coda di head
+
+    head = testa della lista in cui inserire il nuovo processo
+    p = processo da inserire in coda
+
+    return = VOID
+*/
 void insertProcQ(struct list_head* head, pcb_t* p) {
     list_add_tail(&p->p_list, head);
 }
 
-/*Return a pointer to the first PCB from the process queue whose head is pointed to by head. Do
-not remove this PCB from the process queue. Return NULL if the process queue is empty.*/
+/*
+    Ritorna un puntatore al primo processo nella coda della lista head
+
+    head = testa della coda da cui leggere il primo elemento
+
+    return = puntatore al primo processo in coda, NULL se non possiede processi in coda
+*/
 pcb_t* headProcQ(struct list_head* head) {
     if(list_empty(head)){
         return NULL;
@@ -69,9 +105,13 @@ pcb_t* headProcQ(struct list_head* head) {
     }
 }
 
-/*Remove the first (i.e. head) element from the process queue whose head pointer is pointed to
-by head. Return NULL if the process queue was initially empty; otherwise return the pointer
-to the removed element.*/
+/*
+    Rimuove e ritorna il primo elemento della coda dei processi nella lista di head
+
+    head = testa della coda da cui rimuovere il primo processo
+
+    return = puntatore al primo processo della lista, NULL se la lista non possedeva processi in coda
+*/
 pcb_t* removeProcQ(struct list_head* head) {
     if (list_empty(head)) {
         return NULL;
@@ -82,9 +122,14 @@ pcb_t* removeProcQ(struct list_head* head) {
     }
 }
 
-/*Remove the PCB pointed to by p from the process queue whose head pointer is pointed to by
-head. If the desired entry is not in the indicated queue (an error condition), return NULL;
-otherwise, return p. Note that p can point to any element of the process queue.*/
+/*
+    Rimuove il processo p dalla lista head, in qualunque posizione della coda esso si trovi
+
+    head = testa della coda dei processi
+    p = processo che si intende rimuovere dalla lista
+
+    return = puntatore al processo che è stato rimosso, oppure NULL se il processo non era presente nella coda indicata
+*/
 pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
     pcb_t* tmp;
     list_for_each_entry(tmp, head, p_list) {
@@ -96,19 +141,37 @@ pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
     return NULL;
 }
 
-/*Return TRUE if the PCB pointed to by p has no children. Return FALSE otherwise.*/
+/*
+    Controlla se il processo p abbia o meno dei child
+
+    p = processo da controllare
+
+    return = 1 se non ha child, 0 se ne possiede almeno uno
+*/
 int emptyChild(pcb_t* p) {
     return list_empty(&p->p_child);
 }
 
-/*Make the PCB pointed to by p a child of the PCB pointed to by prnt.*/
+/*
+    Inserisce il processo p nella lista dei child del processo prnt
+
+    prnt = il processo da usare come padre del processo p
+    p = il processo da inserire nei child di prnt
+
+    return = VOID
+*/
 void insertChild(pcb_t* prnt, pcb_t* p) {
     p->p_parent = prnt;
     list_add_tail(&p->p_sib, &prnt->p_child);
 }
 
-/*Make the first child of the PCB pointed to by p no longer a child of p. Return NULL if initially
-there were no children of p. Otherwise, return a pointer to this removed first child PCB.*/
+/*
+    Rimuove e ritorna il primo child del processo p
+
+    p = processo da cui rimuovere il primo child
+
+    return = puntatore al primo processo nella lista dei child di p, NULL se non erano presenti child in p
+*/
 pcb_t* removeChild(pcb_t* p) {
     if (!list_empty(&p->p_child)) {
         pcb_t* tmp = container_of(p->p_child.next, pcb_t, p_sib);
@@ -121,9 +184,13 @@ pcb_t* removeChild(pcb_t* p) {
     }
 }
 
-/*Make the PCB pointed to by p no longer the child of its parent. If the PCB pointed to by p has
-no parent, return NULL; otherwise, return p. Note that the element pointed to by p could be
-in an arbitrary position (i.e. not be the first child of its parent).*/
+/*
+    Rimuove il processo p dalla lista child del processo padre di cui è un child
+
+    p = processo (probabilmente child di un altro processo) interessato
+
+    return = puntatore al processo appena rimosso (p), NULL se p non era child di nessun altro processo
+*/
 pcb_t* outChild(pcb_t* p) {
     if (p->p_parent != NULL){
         list_del(&p->p_sib);

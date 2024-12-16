@@ -82,9 +82,13 @@ pcb_t* removeBlocked(int* semAdd) {
 //     rimuove il PCB con quel PID dal semaforo su cui è bloccato (se non è bloccato su un semaforo restituisce NULL).*/
 // }
 
-/*Remove the PCB pointed to by p from the process queue associated with p’s semaphore (p->p_semAdd)
-on the ASL. If PCB pointed to by p does not appear in the process queue associated with p’s
-semaphore, which is an error condition, return NULL; otherwise, return p.*/
+/*
+    Rimuove il processo p dalla coda dei processi del semaforo da lui puntato (p_semAdd)
+
+    p = il puntatore al processo da "liberare"
+
+    return = p, altrimenti NULL se non esistesse il semaforo o il processo non fosse in coda al semaforo
+*/
 pcb_t* outBlocked(pcb_t* p) {
     int* key = p->p_semAdd;
     semd_t* sem_tmp;
@@ -108,9 +112,13 @@ pcb_t* outBlocked(pcb_t* p) {
     return NULL;
 }
 
-/*Return a pointer to the PCB that is at the head of the process queue associated with the
-semaphore semAdd. Return NULL if semAdd is not found on the ASL or if the process queue
-associated with semAdd is empty.*/
+/*
+    Funzione che torna il puntatore al primo processo nella coda del semaforo la cui s_key = semAdd
+
+    semAdd = la s_key del semaforo interessato
+
+    return = un puntatore al primo processo, oppure NULL se non esiste nessun semaforo con quella s_key o non ci siano processi in coda a quel semaforo
+*/
 pcb_t* headBlocked(int* semAdd) {
     semd_t* sem_tmp;
     list_for_each_entry(sem_tmp, &semd_h, s_link) {
