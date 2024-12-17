@@ -75,12 +75,27 @@ pcb_t* removeBlocked(int* semAdd) {
 
 }
 
-// pcb_t* outBlockedPid(int pid) {
-//     klog_print("outBlockedPid");
-//     bp();
-//     /* //NOTE - non richiesta per ph1, utile in ph2
-//     rimuove il PCB con quel PID dal semaforo su cui è bloccato (se non è bloccato su un semaforo restituisce NULL).*/
-// }
+/*
+    Rimuove e restituisce il processo con p_pid = pid dalla lista del semaforo nel quale è contenuto
+
+    pid = int uguale al p_pid del processo interessato
+
+    return = puntatore al processo rimosso dalla coda del semaforo, NULL se non era in coda a nessun semaforo
+*/
+pcb_t* outBlockedPid(int pid) {
+    semd_t* sem_tmp;
+    list_for_each_entry(sem_tmp, &semd_h, s_link){
+        pcb_t* pcb_tmp;
+
+        list_for_each_entry(pcb_tmp, &sem_tmp->s_procq, p_list) {
+            if(pcb_tmp->p_pid == pid){
+                list_del(&pcb_tmp->p_list);
+                return pcb_tmp;
+            }
+        }
+    }
+    return NULL;
+ }
 
 /*
     Rimuove il processo p dalla coda dei processi del semaforo da lui puntato (p_semAdd)
