@@ -1,0 +1,4 @@
+/home/alessandro/Documents/so/starterKit/starterKit/build/CMakeFiles/MultiPandOS.dir
+/home/alessandro/Documents/so/starterKit/starterKit/build/CMakeFiles/MultiPandOSuRISCV.dir
+/home/alessandro/Documents/so/starterKit/starterKit/build/CMakeFiles/edit_cache.dir
+/home/alessandro/Documents/so/starterKit/starterKit/build/CMakeFiles/rebuild_cache.dir
