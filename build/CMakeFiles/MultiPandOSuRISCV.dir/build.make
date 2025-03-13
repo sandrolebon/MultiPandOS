@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/alessandro/Documents/so/starterKit/starterKit
+CMAKE_SOURCE_DIR = /home/alessandro/Documents/so/starterKit
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/alessandro/Documents/so/starterKit/starterKit/build
+CMAKE_BINARY_DIR = /home/alessandro/Documents/so/starterKit/build
 
 # Utility rule file for MultiPandOSuRISCV.
 
@@ -67,7 +67,7 @@ include CMakeFiles/MultiPandOSuRISCV.dir/compiler_depend.make
 include CMakeFiles/MultiPandOSuRISCV.dir/progress.make
 
 CMakeFiles/MultiPandOSuRISCV: MultiPandOS
-	uriscv-elf2uriscv -k /home/alessandro/Documents/so/starterKit/starterKit/build/MultiPandOS
+	uriscv-elf2uriscv -k /home/alessandro/Documents/so/starterKit/build/MultiPandOS
 
 MultiPandOSuRISCV: CMakeFiles/MultiPandOSuRISCV
 MultiPandOSuRISCV: CMakeFiles/MultiPandOSuRISCV.dir/build.make
@@ -82,6 +82,6 @@ CMakeFiles/MultiPandOSuRISCV.dir/clean:
 .PHONY : CMakeFiles/MultiPandOSuRISCV.dir/clean
 
 CMakeFiles/MultiPandOSuRISCV.dir/depend:
-	cd /home/alessandro/Documents/so/starterKit/starterKit/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/alessandro/Documents/so/starterKit/starterKit /home/alessandro/Documents/so/starterKit/starterKit /home/alessandro/Documents/so/starterKit/starterKit/build /home/alessandro/Documents/so/starterKit/starterKit/build /home/alessandro/Documents/so/starterKit/starterKit/build/CMakeFiles/MultiPandOSuRISCV.dir/DependInfo.cmake "--color=$(COLOR)"
+	cd /home/alessandro/Documents/so/starterKit/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/alessandro/Documents/so/starterKit /home/alessandro/Documents/so/starterKit /home/alessandro/Documents/so/starterKit/build /home/alessandro/Documents/so/starterKit/build /home/alessandro/Documents/so/starterKit/build/CMakeFiles/MultiPandOSuRISCV.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/MultiPandOSuRISCV.dir/depend
 
