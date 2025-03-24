@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "scheduler.h": "c",
+        "pcb.h": "c",
+        "listx.h": "c",
+        "initial.h": "c"
+    }
+}

@@ -3,8 +3,12 @@
 #ifndef INITIAL_H
 #define INITIAL_H
 
+#include <uriscv/liburiscv.h>
 #include "../headers/const.h"
 #include "../headers/types.h"
+#include "../phase1/headers/pcb.h"
+#include "../phase1/headers/asl.h"
+#include "../phase2/headers/scheduler.h"
 
 // number of started processes not yet terminated
 int process_count;
@@ -16,5 +20,6 @@ int global_lock;
 pcb_PTR current_process;
 // queue of PCBs in ready state
 struct list_head ready_queue;
+pcb_t * first_process_pcb;
 
 #endif
