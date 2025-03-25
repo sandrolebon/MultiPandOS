@@ -20,6 +20,6 @@ int global_lock;
 pcb_PTR current_process;
 // queue of PCBs in ready state
 struct list_head ready_queue;
-pcb_t * first_process_pcb;
+pcb_PTR first_process_pcb;
 
 #endif

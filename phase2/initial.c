@@ -7,7 +7,7 @@ extern void uTLB_RefillHandler();
 //NOTE - handler generale per tutte le eccezioni (e interruzioni) diverse dagli eventi di TLB-Refill
 extern void exceptionHandler();
 //NOTE - funzione punto di partenza per il primo processo creato durante inizializzazione del sistema
-extern void test();
+extern void test(); //pare che questa cosa dell'extern serva per rendere la funzione visibile al linker
 
 //entry point del sistema operativo
 void main(){
@@ -18,12 +18,13 @@ void main(){
     LDIT(PSECOND);
 
     //istantiate a first process
-    //NOTE - non so cosa facciano metà delle seguenti righe - ho adattato da p2test.c e altro
+    //NOTE - "p_s" è lo stato del processore e 
     first_process_pcb = allocPcb();
-    RAMTOP(first_process_pcb->p_s.reg_sp);
-    first_process_pcb->p_s.pc_epc = (memaddr)test; //sono abbastanza sicuro non ci vada "first_process_pcb" ma whatever
-    first_process_pcb->p_s.status |= MSTATUS_MIE_MASK | MSTATUS_MPP_M;
-    first_process_pcb->p_s.mie = MIE_ALL;
+    first_process_pcb->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
+    first_process_pcb->p_s.status |= MSTATUS_MIE_MASK | MSTATUS_MPP_M; //abilito tutti interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
+    RAMTOP(first_process_pcb->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
+    first_process_pcb->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
+    first_process_pcb->p_s. = (memaddr)test;
     process_count++;
 
     schedule();
@@ -47,6 +48,7 @@ static void initialize(){
   // initialize variables
   process_count = 0;
   waiting_count = 0;
+  global_lock = 0;
   current_process = NULL;
   mkEmptyProcQ(&ready_queue);
   for (int i = 0; i < MAXDEV; i++) {
