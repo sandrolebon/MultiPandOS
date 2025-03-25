@@ -50,7 +50,7 @@ static void initialize(){
     //Pass Up Vector for Processor 1
   passupvector_t *first_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * cpu_id); 
   first_processor->tlb_refill_handler = (memaddr) (0x20020000 + (cpu_id * PAGESIZE));
-  first_processor->exception_handler = (memaddr) KERNELSTACK;
+  first_processor->exception_handler = (memaddr) (0x20020000 + (cpu_id * PAGESIZE));
   first_processor->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
   first_processor->exception_stackPtr = (memaddr) KERNELSTACK;
 
