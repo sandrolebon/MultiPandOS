@@ -3,6 +3,7 @@
         "scheduler.h": "c",
         "pcb.h": "c",
         "listx.h": "c",
-        "initial.h": "c"
+        "initial.h": "c",
+        "liburiscv.h": "c"
     }
 }

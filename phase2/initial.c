@@ -19,27 +19,53 @@ void main(){
 
     //istantiate a first process
     //NOTE - "p_s" è lo stato del processore e 
-    first_process_pcb = allocPcb();
-    first_process_pcb->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
-    first_process_pcb->p_s.status |= MSTATUS_MIE_MASK | MSTATUS_MPP_M; //abilito tutti interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
-    RAMTOP(first_process_pcb->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
-    first_process_pcb->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
-    first_process_pcb->p_s. = (memaddr)test;
-    process_count++;
-
-    schedule();
+    process_zero_pcb = allocPcb();
+    process_zero_pcb->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
+    process_zero_pcb->p_s.status |= MSTATUS_MIE_MASK | MSTATUS_MPP_M; //abilito tutti interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
+    RAMTOP(process_zero_pcb->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
+    process_zero_pcb->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
     
-
-
+    //inserisco il primo processo nella coda processi disponibili, aumento il contatore dei processi;
+    insertProcQ(&ready_queue, process_zero_pcb);   
+    process_count++;
+    
+    schedule(); //chiamo lo scheduler
+    
 }
 
 static void initialize(){
+  // Pass Up Vector: Tabella di riferimento per il BIOS. Quando il processore rileva un'eccezione 
+  // (esclusi alcuni casi gestiti direttamente dal BIOS) o un evento di TLB-Refill, 
+  // il BIOS consulta il Pass Up Vector della CPU corrente per determinare 
+  // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
+  // per l'esecuzione di quel gestore
+
     // Pass Up Vector for Processor 0
-  passupvector_t *passUpVec = (passupvector_t *) PASSUPVECTOR;
-  passUpVec->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-  passUpVec->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
-  passUpVec->exception_handler = (memaddr) exceptionHandler;
-  passUpVec->exception_stackPtr = (memaddr) KERNELSTACK;
+  passupvector_t *first_processor = (passupvector_t *) PASSUPVECTOR;
+  first_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  first_processor->exception_handler = (memaddr) KERNELSTACK;
+  first_processor->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
+  first_processor->exception_stackPtr = (memaddr) KERNELSTACK;
+
+    //Pass Up Vector for Processor 1
+  passupvector_t *first_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * cpu_id); 
+  first_processor->tlb_refill_handler = (memaddr) (0x20020000 + (cpu_id * PAGESIZE));
+  first_processor->exception_handler = (memaddr) KERNELSTACK;
+  first_processor->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
+  first_processor->exception_stackPtr = (memaddr) KERNELSTACK;
+
+    //Pass Up Vector for Processor 2
+  
+    //Pass Up Vector for Processor 3
+  
+    //Pass Up Vector for Processor 4
+  
+    //Pass Up Vector for Processor 5
+  
+    //Pass Up Vector for Processor 6
+  
+    //Pass Up Vector for Processor 7
+
 
   // level 2 structures
   initPcbs();
@@ -49,19 +75,13 @@ static void initialize(){
   process_count = 0;
   waiting_count = 0;
   global_lock = 0;
-  current_process = NULL;
-  mkEmptyProcQ(&ready_queue);
-  for (int i = 0; i < MAXDEV; i++) {
-    // external
-    mkEmptyProcQ(&external_blocked_list[0][i]);
-    mkEmptyProcQ(&external_blocked_list[1][i]);
-    mkEmptyProcQ(&external_blocked_list[2][i]);
-    mkEmptyProcQ(&external_blocked_list[3][i]);
-    // terminal
-    mkEmptyProcQ(&terminal_blocked_list[0][i]);
-    mkEmptyProcQ(&terminal_blocked_list[1][i]);
+  mkEmptyProcQ(&ready_queue); //inizializzo la ready_queue
+
+  for(int i=0; i<NCPU; i++){
+    current_process[i]=NULL; //setto tutti i processi delle CPU a NULL
   }
-  mkEmptyProcQ(&pseudoclock_blocked_list);
-  currentState = (state_t *)BIOSDATAPAGE;
-  stateCauseReg = &currentState->cause;
+
+  for(int i=0; i<NRSEMAPHORES; i++){
+    dev_semaph[i]=0; //setto tutti i semafori dei devices a 0
+  }
 }

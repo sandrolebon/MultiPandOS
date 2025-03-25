@@ -16,10 +16,11 @@ int process_count;
 int waiting_count;
 // Un intero che può assumere solo i valori 0 e 1, utilizzato per la sincronizzazione tra diverse istanze del Nucleo in esecuzione su CPU differenti
 int global_lock;
+int dev_semaph[NRSEMAPHORES]; //con questo array gestisco i Device Semaphores
 // running process
-pcb_PTR current_process;
+pcb_PTR current_process[NCPU]; //array volto a tenere traccia dei processi su ogni CPU
+pcb_PTR process_zero_pcb; //Il PRIMO processo istanziato; quite sure che sia dichiarazione analoga a pcb_t* ma non sono (ancora) il capo della sintassi C 
 // queue of PCBs in ready state
 struct list_head ready_queue;
-pcb_PTR first_process_pcb;
 
 #endif
