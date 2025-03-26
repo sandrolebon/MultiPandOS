@@ -18,7 +18,6 @@ void main(){
     LDIT(PSECOND);
 
     //istantiate a first process
-    //NOTE - "p_s" è lo stato del processore e 
     process_zero_pcb = allocPcb();
     process_zero_pcb->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
     process_zero_pcb->p_s.status |= MSTATUS_MIE_MASK | MSTATUS_MPP_M; //abilito tutti interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
@@ -39,33 +38,63 @@ static void initialize(){
   // il BIOS consulta il Pass Up Vector della CPU corrente per determinare 
   // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
   // per l'esecuzione di quel gestore
+  //TODO GRANDE DUBBIO.. passupvector singolarmente dichiarato per ogni CPU o ciclo iterativo? Nel dubbio dichiaro singolarmente + nomi orribili e ambigui
 
     // Pass Up Vector for Processor 0
-  passupvector_t *first_processor = (passupvector_t *) PASSUPVECTOR;
+  first_processor = (passupvector_t *) PASSUPVECTOR;
   first_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-  first_processor->exception_handler = (memaddr) KERNELSTACK;
+  first_processor->exception_handler = (memaddr) exceptionHandler;
   first_processor->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
   first_processor->exception_stackPtr = (memaddr) KERNELSTACK;
 
     //Pass Up Vector for Processor 1
-  passupvector_t *first_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * cpu_id); 
-  first_processor->tlb_refill_handler = (memaddr) (0x20020000 + (cpu_id * PAGESIZE));
-  first_processor->exception_handler = (memaddr) (0x20020000 + (cpu_id * PAGESIZE));
-  first_processor->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
-  first_processor->exception_stackPtr = (memaddr) KERNELSTACK;
+  second_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 1); 
+  second_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  second_processor->exception_handler = (memaddr) exceptionHandler;
+  second_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (1 * PAGESIZE));
+  second_processor->exception_stackPtr = (memaddr) (0x20020000 + (1 * PAGESIZE));
 
     //Pass Up Vector for Processor 2
-  
+  third_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 2); 
+  third_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  third_processor->exception_handler = (memaddr) exceptionHandler;
+  third_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (2 * PAGESIZE));
+  third_processor->exception_stackPtr = (memaddr) (0x20020000 + (2 * PAGESIZE));
+
     //Pass Up Vector for Processor 3
-  
+  fourth_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 3); 
+  fourth_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  fourth_processor->exception_handler = (memaddr) exceptionHandler;
+  fourth_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (3 * PAGESIZE));
+  fourth_processor->exception_stackPtr = (memaddr) (0x20020000 + (3 * PAGESIZE));
+
     //Pass Up Vector for Processor 4
-  
+  fifth_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 4); 
+  fifth_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  fifth_processor->exception_handler = (memaddr) exceptionHandler;
+  fifth_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (4 * PAGESIZE));
+  fifth_processor->exception_stackPtr = (memaddr) (0x20020000 + (4 * PAGESIZE));
+
     //Pass Up Vector for Processor 5
+  sixth_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 5); 
+  sixth_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  sixth_processor->exception_handler = (memaddr) exceptionHandler;
+  sixth_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (5 * PAGESIZE));
+  sixth_processor->exception_stackPtr = (memaddr) (0x20020000 + (5 * PAGESIZE));
   
     //Pass Up Vector for Processor 6
-  
-    //Pass Up Vector for Processor 7
+  seventh_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 6); 
+  seventh_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  seventh_processor->exception_handler = (memaddr) exceptionHandler;
+  seventh_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (6 * PAGESIZE));
+  seventh_processor->exception_stackPtr = (memaddr) (0x20020000 + (6 * PAGESIZE));
 
+    //Pass Up Vector for Processor 7
+  eighth_processor = (passupvector_t *) (PASSUPVECTOR + 0x10 * 7); 
+  eighth_processor->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  eighth_processor->exception_handler = (memaddr) exceptionHandler;
+  eighth_processor->tlb_refill_stackPtr = (memaddr) (0x20020000 + (7 * PAGESIZE));
+  eighth_processor->exception_stackPtr = (memaddr) (0x20020000 + (7 * PAGESIZE));
 
   // level 2 structures
   initPcbs();
