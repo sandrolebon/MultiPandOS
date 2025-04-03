@@ -31,4 +31,6 @@ passupvector_t *sixth_processor;
 passupvector_t *seventh_processor;
 passupvector_t *eighth_processor;
 
+static void initialize();
+
 #endif

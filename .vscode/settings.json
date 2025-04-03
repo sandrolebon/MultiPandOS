@@ -4,6 +4,7 @@
         "pcb.h": "c",
         "listx.h": "c",
         "initial.h": "c",
-        "liburiscv.h": "c"
+        "liburiscv.h": "c",
+        "const.h": "c"
     }
 }
