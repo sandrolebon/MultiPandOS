@@ -8,26 +8,30 @@ extern struct list_head ready_queue;
 
 /**
  * Carica un processo per essere mandato in run, altrimenti blocca l'esecuzione.
- * <p>Salvare lo stato, rimuovere il processo precedente ecc viene svolto dal chiamante
+ * Salvare lo stato, rimuovere il processo precedente ecc viene svolto dal chiamante
  */
 void schedule() {
   //Con il LOCK garantisco accesso esclusivo alla coda dei processi pronti "ready_queue"
   ACQUIRE_LOCK(&global_lock);
+  int cpu_id = getPRID(); // ottengo l'ID della CPU corrente
   // dispatch the next process
-  current_process[cpu_id] = removeProcQ(&ready_queue);
+  next_process = removeProcQ(&ready_queue);
 
-  if (current_process != NULL) {
+  if (next_process != NULL) {
+    // Assegna il processo rimosso all'elemento current_process corrispondente alla CPU corrente
+    current_process[cpu_id] = next_process;
     // load the PLT
     setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));
-    // perform Load Processor State
+    LDST(&current_process[cpu_id]->p_s); //Load Processor State (LDST) sul processore, carica lo stato salvato nel PCB del processo selezionato, permettendone la ripresa dell'esecuzione
     RELEASE_LOCK(&global_lock); 
-    LDST(&current_process[cpu_id]); //Load Processor State (LDST) sul processore, carica lo stato salvato nel PCB del processo selezionato, permettendone la ripresa dell'esecuzione
-  } else if (process_count == 1) {
-    // only SSI in the system
-    HALT();
+  } else if (process_count == 0) {
+    HALT();//Consider this a job well done!
   } else if (process_count > 0 && waiting_count > 0) {
     // waiting for an interrupt
-    setSTATUS((IECON | IMON) & (~TEBITON));
+    setMIE(MIE_ALL & ~MIE_MTIE_MASK);
+    unsigned int status = getSTATUS();
+    status |= MSTATUS_MIE_MASK;
+    setSTATUS(status); // enable global interrupts and timer interrupt (MTIP)
     WAIT();
   } else if (process_count > 0 && waiting_count == 0) {
     // deadlock
