@@ -4,11 +4,11 @@
 #define INITIAL_H
 
 #include <uriscv/liburiscv.h>
-#include "../headers/const.h"
-#include "../headers/types.h"
-#include "../phase1/headers/pcb.h"
-#include "../phase1/headers/asl.h"
-#include "../phase2/headers/scheduler.h"
+#include "../../headers/const.h"
+#include "../../headers/types.h"
+#include "../../phase1/headers/pcb.h"
+#include "../../phase1/headers/asl.h"
+#include "./scheduler.h"
 
 // number of started processes not yet terminated
 int process_count;

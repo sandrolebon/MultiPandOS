@@ -1,4 +1,4 @@
-# Install script for directory: /home/alessandro/Documents/so/starterKit
+# Install script for directory: /home/alessandro/MultiPandOS
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/alessandro/Documents/so/starterKit/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/alessandro/MultiPandOS/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
