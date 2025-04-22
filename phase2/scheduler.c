@@ -1,4 +1,6 @@
-#include "../phase2/headers/scheduler.h"
+#include <uriscv/liburiscv.h>
+#include "../phase1/headers/pcb.h"
+#include "../headers/const.h"
 
 extern int process_count;
 extern int waiting_count;
@@ -15,7 +17,7 @@ void schedule() {
   ACQUIRE_LOCK(&global_lock);
   int cpu_id = getPRID(); // ottengo l'ID della CPU corrente
   // dispatch the next process
-  next_process = removeProcQ(&ready_queue);
+  pcb_PTR next_process = removeProcQ(&ready_queue);
 
   if (next_process != NULL) {
     // Assegna il processo rimosso all'elemento current_process corrispondente alla CPU corrente
@@ -28,6 +30,7 @@ void schedule() {
     HALT();//Consider this a job well done!
   } else if (process_count > 0 && waiting_count > 0) {
     // waiting for an interrupt
+    //Before executing the WAIT instruction, the Scheduler must first set the mie register to enable interrupts and either disable the PLT (also through the mie register) using:
     setMIE(MIE_ALL & ~MIE_MTIE_MASK);
     unsigned int status = getSTATUS();
     status |= MSTATUS_MIE_MASK;
