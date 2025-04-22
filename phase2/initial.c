@@ -1,9 +1,9 @@
 
 #include <uriscv/liburiscv.h>
-#include "../../headers/const.h"
-#include "../../headers/types.h"
-#include "../../phase1/headers/pcb.h"
-#include "../../phase1/headers/asl.h"
+#include "../headers/const.h"
+#include "../headers/types.h"
+#include "../phase1/headers/pcb.h"
+#include "../phase1/headers/asl.h"
 
 //NOTE  Since address translation is not implemented until the Support Level, uTLB_RefillHandler is a place holder function whose code is provided
 // Un evento di TLB-Refill si verifica quando l'hardware non trova una corrispondenza nella Translation Lookaside Buffer (TLB) durante la traduzione di un indirizzo virtuale
@@ -12,6 +12,8 @@ extern void uTLB_RefillHandler();
 extern void exceptionHandler();
 //NOTE - funzione punto di partenza per il primo processo creato durante inizializzazione del sistema
 extern void test(); //pare che questa cosa dell'extern serva per rendere la funzione visibile al linker
+extern void schedule(); //TODO - uguale a sotto xd
+static void initialize(); //TODO not sure sia dichiarata così
 int dev_semaph[NRSEMAPHORES]; //con questo array gestisco i Device Semaphores
 int process_count;  // number of processes started but not yet terminated
 int waiting_count; // number of soft-blocked processes 
