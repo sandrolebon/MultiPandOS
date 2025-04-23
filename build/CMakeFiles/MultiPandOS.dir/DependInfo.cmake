@@ -21,7 +21,10 @@ set(CMAKE_ASM_TARGET_INCLUDE_PATH
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/alessandro/MultiPandOS/phase1/asl.c" "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o.d"
   "/home/alessandro/MultiPandOS/phase1/pcb.c" "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o.d"
+  "/home/alessandro/MultiPandOS/phase2/exceptions.c" "CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o.d"
   "/home/alessandro/MultiPandOS/phase2/initial.c" "CMakeFiles/MultiPandOS.dir/phase2/initial.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase2/initial.c.o.d"
+  "/home/alessandro/MultiPandOS/phase2/p2test.c" "CMakeFiles/MultiPandOS.dir/phase2/p2test.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase2/p2test.c.o.d"
+  "/home/alessandro/MultiPandOS/phase2/scheduler.c" "CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

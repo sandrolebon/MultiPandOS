@@ -1,5 +1,5 @@
-CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: \
- /home/alessandro/MultiPandOS/phase2/initial.c \
+CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o: \
+ /home/alessandro/MultiPandOS/phase2/exceptions.c \
  /usr/include/uriscv/liburiscv.h \
  /home/alessandro/MultiPandOS/phase2/../headers/const.h \
  /usr/include/uriscv/const.h /usr/include/uriscv/csr.h \
@@ -9,5 +9,4 @@ CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: \
  /home/alessandro/MultiPandOS/phase2/../headers/./listx.h \
  /home/alessandro/MultiPandOS/phase2/../phase1/headers/pcb.h \
  /home/alessandro/MultiPandOS/phase2/../phase1/headers/../../headers/listx.h \
- /home/alessandro/MultiPandOS/phase2/../phase1/headers/../../headers/types.h \
- /home/alessandro/MultiPandOS/phase2/../phase1/headers/asl.h
+ /home/alessandro/MultiPandOS/phase2/../phase1/headers/../../headers/types.h

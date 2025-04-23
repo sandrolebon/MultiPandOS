@@ -21,6 +21,7 @@ int global_lock; // Un intero che può assumere solo i valori 0 e 1, utilizzato 
 pcb_PTR current_process[NCPU]; //array volto a tenere traccia dei processi su ogni CPU
 struct list_head ready_queue; // queue of PCBs in ready state
 passupvector_t* passupvector;
+struct list_head pseudoclock_blocked_list;
 
 //entry point del sistema operativo
 void main(){

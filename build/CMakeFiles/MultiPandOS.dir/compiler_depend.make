@@ -21,6 +21,19 @@ CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: /home/alessandro/MultiPandOS/phase1/p
   /usr/include/uriscv/csr.h \
   /usr/include/uriscv/types.h
 
+CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o: /home/alessandro/MultiPandOS/phase2/exceptions.c \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/listx.h \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/types.h \
+  /home/alessandro/MultiPandOS/headers/listx.h \
+  /home/alessandro/MultiPandOS/headers/types.h \
+  /home/alessandro/MultiPandOS/phase1/headers/pcb.h \
+  /usr/include/uriscv/const.h \
+  /usr/include/uriscv/csr.h \
+  /usr/include/uriscv/liburiscv.h \
+  /usr/include/uriscv/types.h
+
 CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: /home/alessandro/MultiPandOS/phase2/initial.c \
   /home/alessandro/MultiPandOS/headers/const.h \
   /home/alessandro/MultiPandOS/headers/listx.h \
@@ -30,17 +43,33 @@ CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: /home/alessandro/MultiPandOS/phas
   /home/alessandro/MultiPandOS/headers/types.h \
   /home/alessandro/MultiPandOS/phase1/headers/asl.h \
   /home/alessandro/MultiPandOS/phase1/headers/pcb.h \
-  /home/alessandro/MultiPandOS/headers/const.h \
-  /home/alessandro/MultiPandOS/phase1/headers/pcb.h \
-  /home/alessandro/MultiPandOS/phase2/headers/scheduler.h \
-  /home/alessandro/MultiPandOS/phase2/headers/initial.h \
   /usr/include/uriscv/const.h \
   /usr/include/uriscv/csr.h \
   /usr/include/uriscv/liburiscv.h \
   /usr/include/uriscv/types.h
 
+CMakeFiles/MultiPandOS.dir/phase2/p2test.c.o: /home/alessandro/MultiPandOS/phase2/p2test.c \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/listx.h \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/types.h \
+  /usr/include/uriscv/const.h \
+  /usr/include/uriscv/csr.h \
+  /usr/include/uriscv/liburiscv.h \
+  /usr/include/uriscv/types.h
 
-/usr/include/uriscv/liburiscv.h:
+CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o: /home/alessandro/MultiPandOS/phase2/scheduler.c \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/const.h \
+  /home/alessandro/MultiPandOS/headers/listx.h \
+  /home/alessandro/MultiPandOS/headers/listx.h \
+  /home/alessandro/MultiPandOS/headers/types.h \
+  /home/alessandro/MultiPandOS/phase1/headers/pcb.h \
+  /usr/include/uriscv/const.h \
+  /usr/include/uriscv/csr.h \
+  /usr/include/uriscv/liburiscv.h \
+  /usr/include/uriscv/types.h
+
 
 /home/alessandro/MultiPandOS/headers/const.h:
 
@@ -56,14 +85,18 @@ CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: /home/alessandro/MultiPandOS/phas
 
 /usr/include/uriscv/csr.h:
 
+/home/alessandro/MultiPandOS/phase2/p2test.c:
+
 /home/alessandro/MultiPandOS/phase1/headers/pcb.h:
 
 /home/alessandro/MultiPandOS/phase2/initial.c:
+
+/home/alessandro/MultiPandOS/phase2/scheduler.c:
 
 /usr/include/uriscv/types.h:
 
 /home/alessandro/MultiPandOS/phase1/pcb.c:
 
-/home/alessandro/MultiPandOS/phase2/headers/scheduler.h:
+/home/alessandro/MultiPandOS/phase2/exceptions.c:
 
-/home/alessandro/MultiPandOS/phase2/headers/initial.h:
+/usr/include/uriscv/liburiscv.h:
