@@ -83,12 +83,12 @@ clean: CMakeFiles/MultiPandOSuRISCV.dir/clean
 CMakeFiles/MultiPandOS.dir/all:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOS.dir/build.make CMakeFiles/MultiPandOS.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOS.dir/build.make CMakeFiles/MultiPandOS.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9 "Built target MultiPandOS"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=1,2,3,4,5,6,7,8,9,10 "Built target MultiPandOS"
 .PHONY : CMakeFiles/MultiPandOS.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/MultiPandOS.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 10
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/MultiPandOS.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 0
 .PHONY : CMakeFiles/MultiPandOS.dir/rule
@@ -114,7 +114,7 @@ CMakeFiles/MultiPandOSuRISCV.dir/all: CMakeFiles/MultiPandOS.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/MultiPandOSuRISCV.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 10
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/MultiPandOSuRISCV.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/MultiPandOS/build/CMakeFiles 0
 .PHONY : CMakeFiles/MultiPandOSuRISCV.dir/rule

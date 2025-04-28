@@ -12,63 +12,136 @@ extern int waiting_count;
 extern struct list_head ready_queue;
 extern state_t *currentState;
 extern unsigned int *stateCauseReg;
+extern void schedule();
 static void syscallHandler(); //Gestisce le syscall (NSYS1-NSYS7)
 static void programTrapHandler(); //Gestisce errori software, istruzioni privilegiate
 static void interruptHandler(); //Gestisce gli interrupt hardware (timer, dispositivi)
 void exceptionHandler(); //Riceve qualsiasi eccezione o interrupt; smista in base al tipo
+void terminateProcess(pcb_PTR proc);
 
-static void syscallHandler() { //egge a0 (dove secondo convenzione sta il numero della syscall).
+/**
+ * PASSERENsys: simula operazione P (DOWN) su semaforo.
+ * @param semaddr: indirizzo del semaforo
+ * @return 1 se il processo è stato bloccato, 0 altrimenti
+ */
+ int PASSERENsys(int *semaddr) {
   int cpu_id = getPRID();
-  current_process[cpu_id]->p_s.pc_epc += 4; // Advance PC to avoid repeating syscall
+  (*semaddr)--; // decrementa semaforo
 
-  unsigned int syscall_num = currentState->reg_a0; // assuming syscall number is in a0
+  if ((*semaddr) < 0) {
+      // semaforo negativo => blocca il processo corrente
+      current_process[cpu_id]->p_s = *currentState; // salva stato corrente nel PCB
+      current_process[cpu_id]->p_semAdd = semaddr;  // associa il semaforo al processo
 
-  switch (syscall_num) {
-      case CREATEPROCESS:
-        pcb_PTR newProc = allocPcb();
-        if (newProc == NULL) { 
-          currentState->reg_v0 = NOPROC;
-        } else {
-            newProc->p_s = *((state_t *)currentState->reg_a1);
-            insertProcQ(&ready_queue, newProc);
-            newProc->p_parent = current_process[cpu_id];
-            list_add_tail(&newProc->p_list, &current_process[cpu_id]->p_child);
-            process_count++;
-            currentState->reg_v0 = (unsigned int)newProc;
-        }
-          break;
-      case TERMPROCESS:
-        terminateProcess(current_process[cpu_id]);
-        scheduler(); // Non ritorneremo mai da qui
-          break;
-      case PASSEREN:
-        int *semaddr = (int *)currentState->reg_a1;
-        if (PASSERENsys(semaddr) == 1) {
-          scheduler(); // processo bloccato, quindi scheduler
-        }
-          break;
-      case VERHOGEN:
-        int *semaddr = (int *)currentState->reg_a1;
-         VERHOGENsys(semaddr);
-          break;
-      case DOIO:
-          // TODO: implement DoIO syscall
-          break;
-      case GETTIME:
-          // TODO: implement GetTime syscall
-          break;
-      case CLOCKWAIT:
-          // TODO: implement ClockWait syscall
-          break;
-      default:
-          // Invalid syscall -> program trap
-          programTrapHandler();
-          break;
+      insertBlocked(semaddr, current_process[cpu_id]);
+
+      current_process[cpu_id] = NULL;
+
+      return 1; // processo bloccato
+  }
+
+  return 0; // processo NON bloccato
+}
+
+/**
+* VERHOGENsys: simula operazione V (UP) su semaforo.
+* @param semaddr: indirizzo del semaforo
+*/
+void VERHOGENsys(int *semaddr) {
+  (*semaddr)++; // incrementa semaforo
+
+  if ((*semaddr) <= 0) {
+      // c'è qualcuno bloccato su questo semaforo: sveglialo
+      pcb_PTR unblocked = removeBlocked(semaddr);
+
+      if (unblocked != NULL) {
+          unblocked->p_semAdd = NULL; // processo ora non più bloccato
+          insertProcQ(&ready_queue, unblocked);
+      }
   }
 }
 
-static void interruptHandler() {
-  // TODO: identify source (device, clock...) and handle appropriately
+static void syscallHandler() {
+  int cpu_id = getPRID();
+  pcb_PTR proc = current_process[cpu_id];
+
+  // Avanza il Program Counter per evitare di ripetere la syscall
+  currentState->pc_epc += 4;
+
+  unsigned int syscall_num = currentState->gpr[24]; // a0 contiene il numero della syscall
+
+  switch (syscall_num) {
+      case CREATEPROCESS: {
+          pcb_PTR newProc = allocPcb();
+          if (newProc == NULL) {
+              currentState->gpr[2] = (unsigned int)NOPROC; // v0 <- -1 (errore)
+          } else {
+              newProc->p_s = *((state_t *)currentState->gpr[25]); // a1 = stato iniziale
+              newProc->p_time = 0;
+              newProc->p_semAdd = NULL;
+              newProc->p_supportStruct = (support_t *)currentState->gpr[26]; // a2 = supporto, può essere NULL
+              insertProcQ(&ready_queue, newProc);
+              newProc->p_parent = proc;
+              list_add_tail(&newProc->p_list, &proc->p_child);
+              process_count++;
+              currentState->gpr[2] = 0; // v0 <- 0 (successo)
+          }
+          break;
+      }
+
+      case TERMPROCESS: {
+          terminateProcess(proc);
+          schedule(); // Non ritorniamo più da qui
+          break;
+      }
+
+      case PASSEREN: {
+          int *semaddr = (int *)currentState->gpr[25]; // a1
+          if (PASSERENsys(semaddr) == 1) {
+              schedule(); // processo bloccato
+          }
+          break;
+      }
+
+      case VERHOGEN: {
+          int *semaddr = (int *)currentState->gpr[25]; // a1
+          VERHOGENsys(semaddr);
+          break;
+      }
+
+      case DOIO: {
+          int *cmdAddr = (int *)currentState->gpr[25]; // a1
+          int command = currentState->gpr[26];         // a2
+          int *devAddr = (int *)currentState->gpr[27]; // a3
+          int status = DOIOsys(cmdAddr, command, devAddr);
+          currentState->gpr[2] = (unsigned int)status; // v0 = stato di ritorno
+          break;
+      }
+
+      case GETTIME: {
+          cpu_t time = GETTIMEsys();
+          currentState->gpr[2] = (unsigned int)time;
+          break;
+      }
+
+      case CLOCKWAIT: {
+          if (CLOCKWAITsys() == 1) {
+              schedule(); // processo bloccato
+          }
+          break;
+      }
+
+      case GETSUPPORTPTR: {
+          currentState->gpr[2] = (unsigned int)(proc->p_supportStruct);
+          break;
+      }
+
+      default: {
+          // Syscall sconosciuta: comportati come un Program Trap
+          programTrapHandler();
+          break;
+      }
+  }
 }
 
 /**
@@ -78,85 +151,46 @@ static void programTrapHandler() {
     // Terminate the process that caused illegal instruction
     int cpu_id = getPRID();
     terminateProcess(current_process[cpu_id]);
-    scheduler();
+    schedule();
 }
 
+void terminateProcess(pcb_PTR proc) {
+  pcb_PTR child;
 
-/**
- * Elimina il processo p dal sistema e lo ripone nella lista dei free pcb
- * 
- * @param p processo da rimuovere dalle code
- */
- void destroyProcess(pcb_t *p) {
-    if (!isInPCBFree_h(p)) {
-      // lo cerco nella ready queue
-      if (outProcQ(&ready_queue, p) == NULL) {
-        // se non è nella ready lo cerco tra i bloccati per lo pseudoclock
-        int found = FALSE;
-        if (outProcQ(&pseudoclock_blocked_list, p) == NULL) {
-          // se non è per lo pseudoclock, magari è bloccato per un altro interrupt
-          // for (int i = 0; i < MAXDEV && found == FALSE; i++) {
-          //   if (outProcQ(&external_blocked_list[0][i], p) != NULL) found = TRUE;
-          //   if (outProcQ(&external_blocked_list[1][i], p) != NULL) found = TRUE;
-          //   if (outProcQ(&external_blocked_list[2][i], p) != NULL) found = TRUE;
-          //   if (outProcQ(&external_blocked_list[3][i], p) != NULL) found = TRUE;
-          //   if (outProcQ(&terminal_blocked_list[0][i], p) != NULL) found = TRUE;
-          //   if (outProcQ(&terminal_blocked_list[1][i], p) != NULL) found = TRUE;
-          // }
-        } else {
-          found = TRUE;
-        }
-        // contatore diminuito solo se era bloccato per DOIO o PseudoClock
-        if (found) waiting_count--;
+  // Termina ricorsivamente tutti i figli
+  while (!list_empty(&proc->p_child)) {
+      child = container_of(proc->p_child.next, pcb_t, p_list);
+      terminateProcess(child);
+  }
+
+  // Se il processo è bloccato su un semaforo
+  if (proc->p_semAdd != NULL) {
+      pcb_PTR removed = outBlocked(proc);
+      if (removed != NULL) {
+          if ((int)(proc->p_semAdd) >= (int)&dev_semaph[0] && (int)(proc->p_semAdd) < (int)&dev_semaph[NRSEMAPHORES]) {
+              // Era bloccato su un semaforo di DEVICE o CLOCK
+              waiting_count--;
+          } else {
+              // Era bloccato su semafori normali: faccio V
+              (*(proc->p_semAdd))++;
+          }
       }
-      freePcb(p);
-      process_count--;
-    }
   }
 
-void terminateProgeny(pcb_t *p) {
-  while (!emptyChild(p)) {
-    // rimuove il primo figlio
-    pcb_t *child = removeChild(p);
-    // se è stato rimosso con successo, elimina ricorsivamente i suoi figli
-    if (child != NULL) {
-      terminateProgeny(child);
-      // dopo aver eliminato i figli, distrugge il processo
-      destroyProcess(child);
-    }
+  // Se era nella ready queue
+  if (proc == current_process[getPRID()]) {
+      current_process[getPRID()] = NULL;
+  } else {
+      outProcQ(&ready_queue, proc);
   }
+
+  // Aggiorna contatore processi
+  process_count--;
+
+  // Libera il PCB
+  freePcb(proc);
 }
 
-void terminateProcess(pcb_t *p) {
-    outChild(p);
-    terminateProgeny(p);
-    destroyProcess(p);
-  }
-
-/**
- * Gestore Trap
- * 
- * @param indexValue indica se si tratta di un PGFAULTEXCEPT o di un GENERALEXCEPT
- */
-void passUpOrDie(int indexValue, int cpu_id) {
-    
-    // Pass up
-    if((current_process[cpu_id])->p_supportStruct != NULL) {
-        
-        unsigned int stackPtr, status, progCounter;
-        stackPtr = current_process[cpu_id]->p_supportStruct->sup_exceptContext[indexValue].stackPtr;
-        status = current_process[cpu_id]->p_supportStruct->sup_exceptContext[indexValue].status;
-        progCounter = current_process[cpu_id]->p_supportStruct->sup_exceptContext[indexValue].pc;
-
-        LDCXT(stackPtr, status, progCounter);
-    }
-    // Or die
-    else {
-        terminateProcess(current_process);
-        current_process [cpu_id]= NULL;
-        schedule();
-    }
-}
 
 void exceptionHandler() { //fa il dispatch generale: smista le eccezioni verso il giusto gestore
     switch((getCAUSE() & GETEXECCODE) >> CAUSESHIFT) {

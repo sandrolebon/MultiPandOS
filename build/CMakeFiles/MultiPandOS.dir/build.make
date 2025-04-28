@@ -125,10 +125,24 @@ CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.s"
 	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/alessandro/MultiPandOS/phase2/exceptions.c -o CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.s
 
+CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o: CMakeFiles/MultiPandOS.dir/flags.make
+CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o: /home/alessandro/MultiPandOS/phase2/interrupts.c
+CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o: CMakeFiles/MultiPandOS.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o"
+	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o -MF CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o.d -o CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o -c /home/alessandro/MultiPandOS/phase2/interrupts.c
+
+CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.i"
+	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/alessandro/MultiPandOS/phase2/interrupts.c > CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.i
+
+CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.s"
+	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/alessandro/MultiPandOS/phase2/interrupts.c -o CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.s
+
 CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: CMakeFiles/MultiPandOS.dir/flags.make
 CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: /home/alessandro/MultiPandOS/phase1/pcb.c
 CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: CMakeFiles/MultiPandOS.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o"
 	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o -MF CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o.d -o CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o -c /home/alessandro/MultiPandOS/phase1/pcb.c
 
 CMakeFiles/MultiPandOS.dir/phase1/pcb.c.i: cmake_force
@@ -142,7 +156,7 @@ CMakeFiles/MultiPandOS.dir/phase1/pcb.c.s: cmake_force
 CMakeFiles/MultiPandOS.dir/phase1/asl.c.o: CMakeFiles/MultiPandOS.dir/flags.make
 CMakeFiles/MultiPandOS.dir/phase1/asl.c.o: /home/alessandro/MultiPandOS/phase1/asl.c
 CMakeFiles/MultiPandOS.dir/phase1/asl.c.o: CMakeFiles/MultiPandOS.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/MultiPandOS.dir/phase1/asl.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/MultiPandOS.dir/phase1/asl.c.o"
 	riscv64-unknown-elf-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/MultiPandOS.dir/phase1/asl.c.o -MF CMakeFiles/MultiPandOS.dir/phase1/asl.c.o.d -o CMakeFiles/MultiPandOS.dir/phase1/asl.c.o -c /home/alessandro/MultiPandOS/phase1/asl.c
 
 CMakeFiles/MultiPandOS.dir/phase1/asl.c.i: cmake_force
@@ -155,7 +169,7 @@ CMakeFiles/MultiPandOS.dir/phase1/asl.c.s: cmake_force
 
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o: CMakeFiles/MultiPandOS.dir/flags.make
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o: /usr/local/share/uriscv/crtso.S
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building ASM object CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building ASM object CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o"
 	riscv64-unknown-elf-gcc $(ASM_DEFINES) $(ASM_INCLUDES) $(ASM_FLAGS) -o CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o -c /usr/local/share/uriscv/crtso.S
 
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.i: cmake_force
@@ -168,7 +182,7 @@ CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.s: cmake_force
 
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o: CMakeFiles/MultiPandOS.dir/flags.make
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o: /usr/local/share/uriscv/liburiscv.S
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building ASM object CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building ASM object CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o"
 	riscv64-unknown-elf-gcc $(ASM_DEFINES) $(ASM_INCLUDES) $(ASM_FLAGS) -o CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o -c /usr/local/share/uriscv/liburiscv.S
 
 CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.i: cmake_force
@@ -185,6 +199,7 @@ MultiPandOS_OBJECTS = \
 "CMakeFiles/MultiPandOS.dir/phase2/initial.c.o" \
 "CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o" \
 "CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o" \
+"CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o" \
 "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o" \
 "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o" \
 "CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o" \
@@ -197,13 +212,14 @@ MultiPandOS: CMakeFiles/MultiPandOS.dir/phase2/p2test.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/phase2/initial.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o
+MultiPandOS: CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/phase1/asl.c.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/crtso.S.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/usr/local/share/uriscv/liburiscv.S.o
 MultiPandOS: CMakeFiles/MultiPandOS.dir/build.make
 MultiPandOS: CMakeFiles/MultiPandOS.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Linking C executable MultiPandOS"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/alessandro/MultiPandOS/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Linking C executable MultiPandOS"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/MultiPandOS.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
