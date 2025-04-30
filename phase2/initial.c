@@ -1,5 +1,6 @@
 
 #include <uriscv/liburiscv.h>
+#include <string.h>
 #include "../headers/const.h"
 #include "../headers/types.h"
 #include "../phase1/headers/pcb.h"
@@ -19,7 +20,7 @@ int process_count;  // number of processes started but not yet terminated
 int waiting_count; // number of soft-blocked processes 
 int global_lock; // Un intero che può assumere solo i valori 0 e 1, utilizzato per la sincronizzazione tra diverse istanze del Nucleo in esecuzione su CPU differenti
 pcb_PTR current_process[NCPU]; //array volto a tenere traccia dei processi su ogni CPU
-struct list_head ready_queue; // queue of PCBs in ready state
+struct list_head *ready_queue; //tailptr a queue of PCBs in ready state
 passupvector_t* passupvector;
 struct list_head pseudoclock_blocked_list;
 state_t *currentState; //punta alla struttura che contiene lo stato del processore salvato al momento di un'eccezione o interrupt
@@ -39,11 +40,12 @@ void main(){
     next_process->p_s.status |= MSTATUS_MPIE_MASK | MSTATUS_MPP_M; //abilito tutti gli interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
     RAMTOP(next_process->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
     next_process->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
+    STCK(next_process->p_s.gpr[5]); //contenere l’istante preciso in cui il processo inizia il time-slice
     next_process->p_time = 0; //azzero contatore tempo CPU usato dal processo
     next_process->p_semAdd = NULL; //il processo NON e' bloccato su alcun semaforo
     next_process->p_supportStruct = NULL; //il processo NON ha una struttura di supporto associata (serve solo a proc. di supporto avanzati)
     //inserisco il primo processo nella coda processi disponibili, aumento il contatore dei processi;
-    insertProcQ(&ready_queue, next_process);   
+    insertProcQ(ready_queue, next_process);   
     process_count++;
     
     schedule(); //chiamo lo scheduler
@@ -57,18 +59,22 @@ static void initialize(){
   // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
   // per l'esecuzione di quel gestore 
   //TODO - check this shit out che non sono sicuro
+  /* 1.  Pass-Up Vector per TUTTE le CPU attive ------------------------- */
   for (int cpu_id = 0; cpu_id < NCPU; cpu_id++) {
+
     passupvector_t *pvec = (passupvector_t *)(PASSUPVECTOR + cpu_id * 0x10);
 
-    pvec->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-    pvec->exception_handler = (memaddr) exceptionHandler;
+    pvec->tlb_refill_handler  = (memaddr)uTLB_RefillHandler;
+    pvec->exception_handler   = (memaddr)exceptionHandler;
 
-    if (cpu_id == 0) {
-        pvec->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
-        pvec->exception_stackPtr = (memaddr) KERNELSTACK;
-    } else {
-        pvec->tlb_refill_stackPtr = (memaddr)(RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE));
-        pvec->exception_stackPtr = (memaddr)(0x20020000 + (cpu_id * PAGESIZE));
+    if (cpu_id == 0) {                         /* CPU 0 */
+        pvec->tlb_refill_stackPtr = (memaddr)KERNELSTACK;
+        pvec->exception_stackPtr  = (memaddr)KERNELSTACK;
+    } else {                                  /* CPU ≥ 1 */
+        pvec->tlb_refill_stackPtr =
+            (memaddr)(RAMSTART + (64 * PAGESIZE) + cpu_id * PAGESIZE);
+        pvec->exception_stackPtr  =
+            (memaddr)(0x20020000 + cpu_id * PAGESIZE);
     }
 }
   // level 2 structures
@@ -79,7 +85,7 @@ static void initialize(){
   process_count = 0; 
   waiting_count = 0; 
   global_lock = 0; 
-  mkEmptyProcQ(&ready_queue); //inizializzo la ready_queue
+  mkEmptyProcQ(ready_queue); //inizializzo la ready_queue
   currentState = (state_t *)BIOSDATAPAGE; //Ottengo accesso allo stato salvato dal BIOS
   stateCauseReg = &currentState->cause; //Puntatore diretto al codice di causa (interrupt/exception)
 

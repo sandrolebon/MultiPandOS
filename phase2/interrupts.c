@@ -1,10 +1,16 @@
 #include <uriscv/liburiscv.h>
+#include <string.h>
 #include "../headers/const.h"
 #include "../headers/types.h"
 #include "../phase1/headers/pcb.h"
 extern pcb_PTR current_process[NCPU];
 extern struct list_head ready_queue;
 extern state_t *currentState;
+extern int waiting_count;
+extern unsigned int *stateCauseReg;
+extern int dev_semaph[NRSEMAPHORES];
+extern int global_lock;
+extern void updateProcessTime(int cpu_id);
 
 /**
 * Gestione dell'interrupt di un dispositivo specifico
@@ -63,9 +69,12 @@ static void interruptHandler() {
   
     if (cause & LOCALTIMERINT) {
         // Timer Locale scaduto: Preempt processo
+        updateProcessTime(cpu_id);
         current_process[cpu_id]->p_s = *currentState; // salva stato
+        ACQUIRE_LOCK(&global_lock); 
         insertProcQ(&ready_queue, current_process[cpu_id]);
         current_process[cpu_id] = NULL;
+        RELEASE_LOCK(&global_lock);
         schedule();
     }
   
@@ -80,6 +89,7 @@ static void interruptHandler() {
             insertProcQ(&ready_queue, p);
             waiting_count--;
         }
+        dev_semaph[NRSEMAPHORES-1] = 0;              /* reset semaforo a 0 */
     }
   
     // Gestione Interrupt di Dispositivo

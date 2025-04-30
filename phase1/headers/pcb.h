@@ -3,8 +3,10 @@
 
 #include "../../headers/listx.h"
 #include "../../headers/types.h"
+#include <string.h>
 
 void initPcbs();
+void *memcpy (void *dest, const void *, size_t );
 void freePcb(pcb_t* p);
 pcb_t* allocPcb();
 void mkEmptyProcQ(struct list_head* head);

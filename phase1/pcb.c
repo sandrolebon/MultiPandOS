@@ -5,6 +5,15 @@ static struct list_head pcbFree_h = LIST_HEAD_INIT(pcbFree_h);
 static pcb_t pcbFree_table[MAXPROC];
 static int next_pid = 1;
 
+void *memcpy (void *dest, const void *src, size_t len)
+{
+  char *d = dest;
+  const char *s = src;
+  while (len--)
+    *d++ = *s++;
+  return dest;
+}
+
 /*
     FUNZIONE CHIAMATA SOLO AD INIZIO PROGRAMMA
 

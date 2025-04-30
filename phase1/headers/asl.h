@@ -3,7 +3,7 @@
 
 #include "../../headers/listx.h"
 #include "../../headers/types.h"
-
+#include <string.h>
 void initASL();
 int insertBlocked(int* semAdd, pcb_t* p);
 pcb_t* removeBlocked(int* semAdd);

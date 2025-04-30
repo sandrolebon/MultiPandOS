@@ -1,4 +1,5 @@
 #include <uriscv/liburiscv.h>
+#include <string.h>
 #include "../phase1/headers/pcb.h"
 #include "../headers/const.h"
 
@@ -23,6 +24,14 @@ void schedule() {
     // Assegna il processo rimosso all'elemento current_process corrispondente alla CPU corrente
     current_process[cpu_id] = next_process;
     setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));   // load the PLT
+    cpu_t now;
+    STCK(now);
+    current_process[cpu_id]->p_s.gpr[5] = now; // gpr[5] usato come p_s_time
+    /* 
+    * N.B.: gpr[5] (alias t0) è usato dal Nucleo per memorizzare il tempo
+    * di inizio del time slice corrente (p_s_time), al fine di calcolare
+    * correttamente il tempo CPU utilizzato in SYS6 (GETTIME) senza modificare pcb_t e quindi types.h.
+    */
     LDST(&current_process[cpu_id]->p_s); //Load Processor State (LDST) sul processore, carica lo stato salvato nel PCB del processo selezionato, permettendone la ripresa dell'esecuzione
   } else if (process_count == 0) {
         HALT();//Consider this a job well done! 
