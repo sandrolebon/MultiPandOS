@@ -6,4 +6,13 @@ CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: \
  /usr/include/uriscv/types.h \
  /home/alessandro/MultiPandOS/phase1/./headers/../../headers/./const.h \
  /usr/include/uriscv/const.h /usr/include/uriscv/csr.h \
- /home/alessandro/MultiPandOS/phase1/./headers/../../headers/./listx.h
+ /home/alessandro/MultiPandOS/phase1/./headers/../../headers/./listx.h \
+ /usr/include/string.h /usr/include/bits/libc-header-start.h \
+ /usr/include/features.h /usr/include/features-time64.h \
+ /usr/include/bits/wordsize.h /usr/include/bits/timesize.h \
+ /usr/include/stdc-predef.h /usr/include/sys/cdefs.h \
+ /usr/include/bits/long-double.h /usr/include/gnu/stubs.h \
+ /usr/include/gnu/stubs-32.h \
+ /usr/lib/gcc/riscv64-unknown-elf/13.2.0/include/stddef.h \
+ /usr/include/bits/types/locale_t.h /usr/include/bits/types/__locale_t.h \
+ /usr/include/strings.h
