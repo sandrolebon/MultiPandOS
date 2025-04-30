@@ -13,14 +13,14 @@ extern void uTLB_RefillHandler();
 extern void exceptionHandler();
 //NOTE - funzione punto di partenza per il primo processo creato durante inizializzazione del sistema
 extern void test(); //pare che questa cosa dell'extern serva per rendere la funzione visibile al linker
-extern void schedule(); //TODO - uguale a sotto xd
+extern void schedule(); //TODO - uguale a sotto zioponi
 static void initialize(); //TODO not sure sia dichiarata così
 int dev_semaph[NRSEMAPHORES]; //con questo array gestisco i Device Semaphores
 int process_count;  // number of processes started but not yet terminated
 int waiting_count; // number of soft-blocked processes 
 int global_lock; // Un intero che può assumere solo i valori 0 e 1, utilizzato per la sincronizzazione tra diverse istanze del Nucleo in esecuzione su CPU differenti
 pcb_PTR current_process[NCPU]; //array volto a tenere traccia dei processi su ogni CPU
-struct list_head *ready_queue; //tailptr a queue of PCBs in ready state
+struct list_head ready_queue; //tailptr a queue of PCBs in ready state
 passupvector_t* passupvector;
 struct list_head pseudoclock_blocked_list;
 state_t *currentState; //punta alla struttura che contiene lo stato del processore salvato al momento di un'eccezione o interrupt
@@ -45,7 +45,7 @@ void main(){
     next_process->p_semAdd = NULL; //il processo NON e' bloccato su alcun semaforo
     next_process->p_supportStruct = NULL; //il processo NON ha una struttura di supporto associata (serve solo a proc. di supporto avanzati)
     //inserisco il primo processo nella coda processi disponibili, aumento il contatore dei processi;
-    insertProcQ(ready_queue, next_process);   
+    insertProcQ(&ready_queue, next_process);   
     process_count++;
     
     schedule(); //chiamo lo scheduler
@@ -62,21 +62,20 @@ static void initialize(){
   /* 1.  Pass-Up Vector per TUTTE le CPU attive ------------------------- */
   for (int cpu_id = 0; cpu_id < NCPU; cpu_id++) {
 
-    passupvector_t *pvec = (passupvector_t *)(PASSUPVECTOR + cpu_id * 0x10);
+    passupvector_t *pv = (passupvector_t *)(PASSUPVECTOR + cpu_id * 0x10);
 
-    pvec->tlb_refill_handler  = (memaddr)uTLB_RefillHandler;
-    pvec->exception_handler   = (memaddr)exceptionHandler;
+    pv->tlb_refill_handler  = (memaddr)uTLB_RefillHandler;
+    pv->exception_handler   = (memaddr)exceptionHandler;
 
-    if (cpu_id == 0) {                         /* CPU 0 */
-        pvec->tlb_refill_stackPtr = (memaddr)KERNELSTACK;
-        pvec->exception_stackPtr  = (memaddr)KERNELSTACK;
-    } else {                                  /* CPU ≥ 1 */
-        pvec->tlb_refill_stackPtr =
-            (memaddr)(RAMSTART + (64 * PAGESIZE) + cpu_id * PAGESIZE);
-        pvec->exception_stackPtr  =
-            (memaddr)(0x20020000 + cpu_id * PAGESIZE);
+    if (cpu_id == 0) {
+        pv->tlb_refill_stackPtr = (memaddr)KERNELSTACK;
+        pv->exception_stackPtr  = (memaddr)KERNELSTACK;
+    } else {
+        pv->tlb_refill_stackPtr = (memaddr)(RAMSTART + (64*PAGESIZE) + cpu_id*PAGESIZE);
+        pv->exception_stackPtr  = (memaddr)(0x20020000 + cpu_id*PAGESIZE);
     }
-}
+  }
+
   // level 2 structures
   initPcbs();
   initASL();
@@ -85,7 +84,7 @@ static void initialize(){
   process_count = 0; 
   waiting_count = 0; 
   global_lock = 0; 
-  mkEmptyProcQ(ready_queue); //inizializzo la ready_queue
+  mkEmptyProcQ(&ready_queue); //inizializzo la ready_queue
   currentState = (state_t *)BIOSDATAPAGE; //Ottengo accesso allo stato salvato dal BIOS
   stateCauseReg = &currentState->cause; //Puntatore diretto al codice di causa (interrupt/exception)
 

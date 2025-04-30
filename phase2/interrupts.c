@@ -11,6 +11,8 @@ extern unsigned int *stateCauseReg;
 extern int dev_semaph[NRSEMAPHORES];
 extern int global_lock;
 extern void updateProcessTime(int cpu_id);
+void interruptHandler();
+
 
 /**
 * Gestione dell'interrupt di un dispositivo specifico
@@ -63,7 +65,7 @@ static void deviceHandler(int line) {
   }
   
 
-static void interruptHandler() {
+void interruptHandler() {
     int cpu_id = getPRID();
     unsigned int cause = *stateCauseReg;
   

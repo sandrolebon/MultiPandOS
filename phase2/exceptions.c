@@ -1,4 +1,3 @@
-//NOTE con vergogna debbo puntualizzare che di mio c'è poco e niente qui
 #include <uriscv/liburiscv.h>
 #include <string.h>
 #include "../headers/const.h"
@@ -11,7 +10,6 @@ extern int dev_semaph[NRSEMAPHORES];
 extern struct list_head pseudoclock_blocked_list;
 extern int process_count;
 extern int waiting_count;
-extern int cpu_id;
 extern struct list_head ready_queue;
 extern state_t *currentState;
 extern unsigned int *stateCauseReg;
@@ -34,7 +32,7 @@ void passUpOrDie(int exceptionType, int cpu_id) {
     }
 }
 
-//TODO - scegliere un approccio: o tremila funzioni o all in switch
+//TODO - scegliere un approccio: o tremila funzioni o all you can switch
 cpu_t GETTIMEsys() {
     int cpu_id = getPRID();
     cpu_t now;
@@ -47,7 +45,7 @@ cpu_t GETTIMEsys() {
    Aggiorna p_time del processo che sta girando sulla CPU indicata
    usando gpr[5] --> p_s_time   (vedi discussione precedente)
    ------------------------------------------------------------------ */
-static inline void updateProcessTime(int cpu_id)
+   void updateProcessTime(int cpu_id)
 {
     cpu_t now; STCK(now);                          /* TOD clock attuale */
     pcb_PTR p = current_process[cpu_id];
@@ -55,34 +53,6 @@ static inline void updateProcessTime(int cpu_id)
     cpu_t start = p->p_s.gpr[5];                   /* slice start       */
     p->p_time += (now - start);                    /* accumula tempo    */
 }
-
-
-/**
- * PASSERENsys: simula operazione P (DOWN) su semaforo.
- * @param semaddr: indirizzo del semaforo
- * @return 1 se il processo è stato bloccato, 0 altrimenti
- 
-//TODO - prob eliminabile
- int PASSERENsys(int *semaddr) {
-  int cpu_id = getPRID();
-  (*semaddr)--; // decrementa semaforo
-
-  if ((*semaddr) < 0) {
-      // semaforo negativo => blocca il processo corrente
-      updateProcessTime(cpu_id);
-      current_process[cpu_id]->p_s = *currentState; // salva stato corrente nel PCB
-      current_process[cpu_id]->p_semAdd = semaddr;  // associa il semaforo al processo
-
-      insertBlocked(semaddr, current_process[cpu_id]);
-
-      current_process[cpu_id] = NULL;
-
-      return 1; // processo bloccato
-  }
-
-  return 0; // processo NON bloccato
-}
-*/ 
 
 static void syscallHandler() {
   int cpu_id = getPRID();
@@ -223,13 +193,13 @@ static void programTrapHandler() {
 
 void terminateProcess(pcb_PTR proc) {
   pcb_PTR child;
-  int thisCpu = getPRID();
+  int cpu_id = getPRID();
 
   /* se proc è quello in esecuzione su questa CPU,
      aggiorno p_time PRIMA di toccarlo               */
-  if (proc == current_process[thisCpu]) {
-      updateProcessTime(thisCpu);                 
-      current_process[thisCpu] = NULL;
+  if (proc == current_process[cpu_id]) {
+      updateProcessTime(cpu_id);                 
+      current_process[cpu_id] = NULL;
   }
 
   // Termina ricorsivamente tutti i figli
@@ -255,16 +225,16 @@ void terminateProcess(pcb_PTR proc) {
   }
 
   // Se era nella ready queue
-  if (proc == current_process[getPRID()]) {
+  if (proc == current_process[cpu_id]) {
       updateProcessTime(cpu_id);
-      current_process[getPRID()] = NULL;
+      current_process[cpu_id] = NULL;
   } else {
       outProcQ(&ready_queue, proc);
-  }
+  }//TODO - CPU_ID O GETPRID???
 
   // Aggiorna contatore processi
   process_count--;
-  if (proc == current_process[getPRID()]) {
+  if (proc == current_process[cpu_id]) {
     cpu_t now;
     STCK(now);
     cpu_t start = proc->p_s.gpr[5];
