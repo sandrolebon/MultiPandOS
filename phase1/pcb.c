@@ -50,11 +50,13 @@ pcb_t* allocPcb() {
     else{
         pcb_t* tmp = container_of(pcbFree_h.next, pcb_t, p_list);
         list_del(pcbFree_h.next);
-        
+        /* 2. AZZERA TUTTI I CAMPI ----------------------------- */
+        for (size_t i = 0; i < sizeof(pcb_t); i++){
+            ((unsigned char *)tmp)[i] = 0;
+        }
         INIT_LIST_HEAD(&tmp->p_list);
         INIT_LIST_HEAD(&tmp->p_child);
         INIT_LIST_HEAD(&tmp->p_sib);
-
         tmp->p_parent = NULL;
         tmp->p_time = 0;
         tmp->p_supportStruct = NULL;

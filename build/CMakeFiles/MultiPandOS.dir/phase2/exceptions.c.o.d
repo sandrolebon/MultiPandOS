@@ -9,6 +9,7 @@ CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o: \
  /usr/lib/gcc/riscv64-unknown-elf/13.2.0/include/stddef.h \
  /usr/include/bits/types/locale_t.h /usr/include/bits/types/__locale_t.h \
  /usr/include/strings.h \
+ /usr/lib/gcc/riscv64-unknown-elf/13.2.0/include/stdbool.h \
  /home/alessandro/MultiPandOS/phase2/../headers/const.h \
  /usr/include/uriscv/const.h /usr/include/uriscv/csr.h \
  /home/alessandro/MultiPandOS/phase2/../headers/types.h \

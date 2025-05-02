@@ -26,6 +26,14 @@ struct list_head pseudoclock_blocked_list;
 state_t *currentState; //punta alla struttura che contiene lo stato del processore salvato al momento di un'eccezione o interrupt
 unsigned int *stateCauseReg; //puntatore diretto al campo cause all'interno di quella struttura di stato, permettendo un accesso rapido al codice che identifica l'evento
 
+
+void *memset (void *dest, register int val, register size_t len)
+{
+  register unsigned char *ptr = (unsigned char*)dest;
+  while (len-- > 0)
+    *ptr++ = val;
+  return dest;
+}
 //entry point del sistema operativo
 void main(){
     //nucleus initialization
@@ -37,7 +45,8 @@ void main(){
     //istantiate a first process
     pcb_PTR next_process = allocPcb();
     next_process->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
-    next_process->p_s.status |= MSTATUS_MPIE_MASK | MSTATUS_MPP_M; //abilito tutti gli interrupt assegnando un valore che abbia il bit corrispondente a MIE impostato a 1, MSTATUS_MIE_MASK, incluso tramite un'operazione OR bit a bit; MPP - Machine Previous Privilege: indica la modalità in cui il processore stava operando prima di entrare in un'eccezione; all'inizio lo impostiamo in modalità machine (kernel), quindi primo processo avrà privilegi massimi
+    next_process->p_s.status |= MSTATUS_MPIE_MASK   /* prev-IE  */
+                             | MSTATUS_MPP_M;     /* kernel   */
     RAMTOP(next_process->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
     next_process->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
     STCK(next_process->p_s.gpr[5]); //contenere l’istante preciso in cui il processo inizia il time-slice
@@ -52,47 +61,57 @@ void main(){
     
 }
 
-static void initialize(){
-  // Pass Up Vector: Tabella di riferimento per il BIOS. Quando il processore rileva un'eccezione 
-  // (esclusi alcuni casi gestiti direttamente dal BIOS) o un evento di TLB-Refill, 
-  // il BIOS consulta il Pass Up Vector della CPU corrente per determinare 
-  // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
-  // per l'esecuzione di quel gestore 
-  //TODO - check this shit out che non sono sicuro
-  /* 1.  Pass-Up Vector per TUTTE le CPU attive ------------------------- */
-  for (int cpu_id = 0; cpu_id < NCPU; cpu_id++) {
 
-    passupvector_t *pv = (passupvector_t *)(PASSUPVECTOR + cpu_id * 0x10);
+static void initialize() {
+    // Pass Up Vector: Tabella di riferimento per il BIOS. Quando il processore rileva un'eccezione 
+    // (esclusi alcuni casi gestiti direttamente dal BIOS) o un evento di TLB-Refill, 
+    // il BIOS consulta il Pass Up Vector della CPU corrente per determinare 
+    // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
+    // per l'esecuzione di quel gestore 
+    //TODO - check this shit out che non sono sicuro
+  // 1. Correggiamo l'inizializzazione dei Pass Up Vector per CPU multiple
+  passupvector = (passupvector_t *) PASSUPVECTOR;
+  
+  // CPU 0 (già corretto)
+  passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+  passupvector->exception_handler = (memaddr) exceptionHandler;
+  passupvector->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
+  passupvector->exception_stackPtr = (memaddr) KERNELSTACK;
 
-    pv->tlb_refill_handler  = (memaddr)uTLB_RefillHandler;
-    pv->exception_handler   = (memaddr)exceptionHandler;
-
-    if (cpu_id == 0) {
-        pv->tlb_refill_stackPtr = (memaddr)KERNELSTACK;
-        pv->exception_stackPtr  = (memaddr)KERNELSTACK;
-    } else {
-        pv->tlb_refill_stackPtr = (memaddr)(RAMSTART + (64*PAGESIZE) + cpu_id*PAGESIZE);
-        pv->exception_stackPtr  = (memaddr)(0x20020000 + cpu_id*PAGESIZE);
-    }
+  // Per CPU 1-7 dobbiamo usare l'offset corretto nel Pass Up Vector
+  for(int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
+      passupvector_t* cpu_passup = (passupvector_t*)(PASSUPVECTOR + (cpu_id * sizeof(passupvector_t)));
+      
+      cpu_passup->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+      cpu_passup->exception_handler = (memaddr) exceptionHandler;
+      cpu_passup->tlb_refill_stackPtr = RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
+      cpu_passup->exception_stackPtr = 0x20020000 + (cpu_id * PAGESIZE);
   }
 
-  // level 2 structures
+  // 2. Semplifichiamo l'inizializzazione dell'IRT
+  for (int i = 0; i < IRT_NUM_ENTRY; i++) {
+      int cpu_id = i / 6;  // 6 entry per CPU
+      unsigned int dest_mask = 1 << cpu_id;
+      volatile unsigned int* irt_entry = (unsigned int*)(IRT_START + i * 4);
+      *irt_entry = IRT_RP_BIT_ON | dest_mask;
+  }
+
+  // 3. Inizializzazione strutture dati Level 2
   initPcbs();
   initASL();
 
-  // initialize variables
-  process_count = 0; 
-  waiting_count = 0; 
-  global_lock = 0; 
-  mkEmptyProcQ(&ready_queue); //inizializzo la ready_queue
-  currentState = (state_t *)BIOSDATAPAGE; //Ottengo accesso allo stato salvato dal BIOS
-  stateCauseReg = &currentState->cause; //Puntatore diretto al codice di causa (interrupt/exception)
+  // 4. Inizializzazione variabili globali
+  process_count = 0;
+  waiting_count = 0;
+  global_lock = 0;
+  mkEmptyProcQ(&ready_queue);
+  mkEmptyProcQ(&pseudoclock_blocked_list); // Aggiungiamo questa
 
-  for(int i=0; i<NCPU; i++){
-    current_process[i]=NULL; //setto tutti i processi delle CPU a NULL
-  }
+  // 5. Setup stato corrente e registri
+  currentState = GET_EXCEPTION_STATE_PTR(0); // Usiamo la macro invece dell'indirizzo diretto
+  stateCauseReg = &currentState->cause;
 
-  for(int i=0; i<NRSEMAPHORES; i++){
-    dev_semaph[i]=0; //setto tutti i semafori dei devices a 0
-  }
+  // 6. Inizializzazione array processi e semafori
+  memset(current_process, 0, sizeof(pcb_PTR) * NCPU);
+  memset(dev_semaph, 0, sizeof(int) * NRSEMAPHORES);
 }

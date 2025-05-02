@@ -11,94 +11,117 @@ extern unsigned int *stateCauseReg;
 extern int dev_semaph[NRSEMAPHORES];
 extern int global_lock;
 extern void updateProcessTime(int cpu_id);
+static void handlePLT(int cpu_id);
+static void handleIntervalTimer(void);
 void interruptHandler();
+#include <uriscv/cpu.h>
 
+/* ------------------------------------------------------------------
+   Gestione della linea‑1  (Processor Local Timer – PLT)
+   ------------------------------------------------------------------ */
+   static void handlePLT(int cpu_id)
+   {
+       /* 1. Aggiorna il tempo CPU del PCB corrente */
+       updateProcessTime(cpu_id);
+   
+       /* 2. Salva lo stato corrente nel PCB e rimetti in ready queue */
+       if (current_process[cpu_id] != NULL) {
+           current_process[cpu_id]->p_s = *currentState;
+           insertProcQ(&ready_queue, current_process[cpu_id]);
+       }
+   
+       /* 3. Azzeriamo current_process e ricarichiamo il PLT */
+       current_process[cpu_id] = NULL;
+       setTIMER(TIMESLICE);                /* 5 ms per nuovo time‑slice */
+   
+       /* 4. Chiamata allo scheduler (non ritorna) */
+       schedule();
+   }
+   
+   /* ------------------------------------------------------------------
+      Gestione della linea‑2  (Interval Timer – Pseudo‑clock tick)
+      ------------------------------------------------------------------ */
+   static void handleIntervalTimer(void)
+   {
+       /* 1. Ricarica l’Interval Timer con 100 ms */
+       LDIT(PSECOND);
+   
+       /* 2. Sveglia tutti i PCB bloccati sul semaforo pseudo‑clock */
+       pcb_PTR p;
+       while ((p = removeBlocked(&dev_semaph[NRSEMAPHORES-1])) != NULL) {
+           p->p_semAdd = NULL;
+           insertProcQ(&ready_queue, p); 
+           waiting_count--;
+       }
+       dev_semaph[NRSEMAPHORES-1] = 0;     /* reset semaforo */
+   }
 
 /**
 * Gestione dell'interrupt di un dispositivo specifico
 * @param line: linea di interrupt
 */
-static void deviceHandler(int line) {
-    unsigned int deviceBitmap;
-    int deviceNumber = -1;
-  
-    // Prendi il device bitmap per questa linea
-    deviceBitmap = ((devregarea_t *)RAMBASEADDR)->interrupt_dev[line - IL_DISK];
-  
-    // Trova quale device ha lanciato l'interrupt
-    for (int i = 0; i < 8; i++) {
-        if (deviceBitmap & (1 << i)) {
-            deviceNumber = i;
-            break;
-        }
-    }
-  
-    if (deviceNumber == -1) {
-        PANIC(); // qualcosa è andato storto
-    }
-  
-    devreg_t *devReg = &((devregarea_t *)RAMBASEADDR)->devreg[line - IL_DISK][deviceNumber];
-    unsigned int status;
-  
-    if (line == IL_TERMINAL) {
-        // Terminali gestiscono separatamente ricezione e trasmissione
-        if (devReg->term.recv_status & DEV0ON) {
-            status = devReg->term.recv_status;
-            devReg->term.recv_command = ACK;
-        } else {
-            status = devReg->term.transm_status;
-            devReg->term.transm_command = ACK;
-        }
-    } else {
-        status = devReg->dtp.status;
-        devReg->dtp.command = ACK;
-    }
-  
-    // Risveglia il processo bloccato su quel device
-    pcb_PTR p = removeBlocked((int *)&dev_semaph[(line - IL_DISK) * 8 + deviceNumber]);
-    if (p != NULL) {
-        p->p_semAdd = NULL;
-        waiting_count--;
-        p->p_s.gpr[2] = status; // restituisco lo status nel registro v0
-        insertProcQ(&ready_queue, p);
-    }
-  }
-  
+static void deviceHandler(int line)
+{
+    devregarea_t *devarea = (devregarea_t *)RAMBASEADDR;
+    unsigned int bitmap   = devarea->interrupt_dev[line - IL_DISK];
 
-void interruptHandler() {
-    int cpu_id = getPRID();
-    unsigned int cause = *stateCauseReg;
-  
-    if (cause & LOCALTIMERINT) {
-        // Timer Locale scaduto: Preempt processo
-        updateProcessTime(cpu_id);
-        current_process[cpu_id]->p_s = *currentState; // salva stato
-        ACQUIRE_LOCK(&global_lock); 
-        insertProcQ(&ready_queue, current_process[cpu_id]);
-        current_process[cpu_id] = NULL;
-        RELEASE_LOCK(&global_lock);
-        schedule();
-    }
-  
-    if (cause & TIMERINTERRUPT) {
-        // Interval Timer scaduto: PseudoClock tick
-        LDIT(PSECOND); // ricarica Interval Timer
-  
-        // Risveglia tutti i processi bloccati sul semaforo PseudoClock
-        pcb_PTR p;
-        while ((p = removeBlocked((int *)&dev_semaph[NRSEMAPHORES - 1])) != NULL) {
-            p->p_semAdd = NULL;
-            insertProcQ(&ready_queue, p);
+    /* scorri i device 0…7 della linea */
+    for (int dev = 0; dev < 8; dev++) { //NOTE 8 = 	Numero di sub‑device collegati a ciascuna linea d’interrupt 3‑7 (disk0‑7, flash0‑7, …).
+        if (!(bitmap & (1 << dev))) continue;          /* nessun interrupt */
+
+        devreg_t *d = &devarea->devreg[line - IL_DISK][dev];
+        unsigned int status;
+
+        if (line == IL_TERMINAL) {
+            /* priorità: trasmissione > ricezione */
+            if (d->term.transm_status & DEV0ON) {
+                status = d->term.transm_status;
+                d->term.transm_command = ACK;
+            } else {
+                status = d->term.recv_status;
+                d->term.recv_command  = ACK;
+            }
+        } else {                                       /* disk, flash, ecc. */
+            status = d->dtp.status;
+            d->dtp.command = ACK;
+        }
+
+        /* sblocca eventuale PCB in attesa su semaforo del device */
+        int semIndex = (line - IL_DISK) * 8 + dev;
+        pcb_PTR p = removeBlocked(&dev_semaph[semIndex]);
+        if (p != NULL) {
+            p->p_semAdd     = NULL;
+            p->p_s.gpr[2]   = status;                  /* v0 <- status dev */
             waiting_count--;
+            insertProcQ(&ready_queue, p);
         }
-        dev_semaph[NRSEMAPHORES-1] = 0;              /* reset semaforo a 0 */
+    }
+}
+
+  void interruptHandler(void)
+  {
+    int  cpu   = getPRID();
+    unsigned int cause = getCAUSE();          /* mcause */
+
+    /* ---------- Linea 1: PLT ---------- */
+    if (cause & LOCALTIMERINT) {
+        handlePLT(cpu);                       /* pre‑emzione  */
+    }
+
+    /* ---------- Linea 2: Interval Timer / Pseudo‑clock ---------- */
+    if (cause & TIMERINTERRUPT) {
+        handleIntervalTimer();                /* tick 100 ms  */
+    }
+
+    /* ---------- Linee 3‑7: periferiche ---------- */
+    for (int line = IL_DISK; line <= IL_TERMINAL; line++) {
+        if (CAUSE_IP_GET(cause, line)) {      /* bit IP(line) == 1 ? */
+            deviceHandler(line);              /* gestisci TUTTI i dev di quella linea */
+        }
     }
   
-    // Gestione Interrupt di Dispositivo
-    for (int line = IL_DISK; line <= IL_TERMINAL; line++) {
-        if (CAUSE_IP_GET(cause, line)) {
-            // c'è un interrupt su questa linea
-            deviceHandler(line);
-        }
-    }
+      /* al termine si ritorna al processo corrente (se esiste)
+         o lo scheduler ha già preso controllo dall’interno
+         di handlePLT / handleIntervalTimer / deviceHandler */
   }
+  

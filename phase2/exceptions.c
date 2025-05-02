@@ -1,5 +1,6 @@
 #include <uriscv/liburiscv.h>
 #include <string.h>
+#include <stdbool.h>
 #include "../headers/const.h"
 #include "../headers/types.h"
 #include "../phase1/headers/pcb.h"
@@ -62,124 +63,148 @@ static void syscallHandler() {
   currentState->pc_epc += 4;
 
   unsigned int syscall_num = currentState->gpr[24]; // a0 contiene il numero della syscall
+  /* Recupero numero syscall (a0) */
+unsigned int num = currentState->gpr[24];      /* a0 */
 
+/* 1. Se il numero è negativo → syscall di Nucleo    */
+if ((int)num < 0) {
+
+    /* 1a. Controllo privilegi                        */
+    bool inUser = (currentState->status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
+
+    if (inUser) {
+        /* Simula Program Trap “PrivInstr”            */
+        currentState->cause = PRIVINSTR;             /* ecc-code 10 */
+        programTrapHandler();                        /* passUpOrDie */
+        return;                                      /* NON eseguire case */
+    }
+
+    /* 1b.  Siamo in kernel‑mode → gestisci la syscall normally */
+    //TODO - sto switch è un puttanaio
   switch (syscall_num) {
-      case CREATEPROCESS: {
-          pcb_PTR newProc = allocPcb();
-          if (newProc == NULL) {
-              currentState->gpr[2] = (unsigned int)NOPROC; // v0 <- -1 (errore)
-          } else {
-              newProc->p_s = *((state_t *)currentState->gpr[25]); // a1 = stato iniziale
-              newProc->p_time = 0;
-              newProc->p_semAdd = NULL;
-              newProc->p_supportStruct = (support_t *)currentState->gpr[26]; // a2 = supporto, può essere NULL
-              insertProcQ(&ready_queue, newProc);
-              newProc->p_parent = proc;
-              list_add_tail(&newProc->p_list, &proc->p_child);
-              process_count++;
-              currentState->gpr[2] = 0; // v0 <- 0 (successo)
-          }
-          break;
-      }
-
-      case TERMPROCESS: {
-          terminateProcess(proc);
-          schedule(); // Non ritorniamo più da qui
-          break;
-      }
-
-      case PASSEREN: {
-        int *semaddr = (int*)currentState->gpr[25];
-    
-        (*semaddr)--;
-        if (*semaddr < 0) {
-            /* dovrà bloccare -> aggiorna tempo, inserisci su ASL, schedule() */
-            updateProcessTime(cpu_id);
-            current_process[cpu_id]->p_s = *currentState;
-            current_process[cpu_id]->p_semAdd = semaddr;
-            insertBlocked(semaddr, current_process[cpu_id]);
-            current_process[cpu_id] = NULL;
-            waiting_count++;
-            schedule();                /* ← NON TORNA */
+    case CREATEPROCESS: {
+        pcb_PTR newProc = allocPcb();
+        if (newProc == NULL) {
+            currentState->gpr[2] = (unsigned int)NOPROC; // v0 <- -1 (errore)
+        } else {
+            newProc->p_s = *((state_t *)currentState->gpr[25]); // a1 = stato iniziale
+            newProc->p_time = 0;
+            newProc->p_semAdd = NULL;
+            newProc->p_supportStruct = (support_t *)currentState->gpr[26]; // a2 = supporto, può essere NULL
+            insertProcQ(&ready_queue, newProc);
+            newProc->p_parent = proc;
+            list_add_tail(&newProc->p_list, &proc->p_child);
+            process_count++;
+            currentState->gpr[2] = 0; // v0 <- 0 (successo)
         }
-        /* se non blocca, esce dallo switch
-           e finirà nell’LDST comune in coda */
+        break;
+    }
+
+    case TERMPROCESS: {
+        terminateProcess(proc);
+        schedule(); // Non ritorniamo più da qui
+        break;
+    }
+
+    case PASSEREN: {
+      int *semaddr = (int*)currentState->gpr[25];
+  
+      (*semaddr)--;
+      if (*semaddr < 0) {
+          /* dovrà bloccare -> aggiorna tempo, inserisci su ASL, schedule() */
+          updateProcessTime(cpu_id);
+          current_process[cpu_id]->p_s = *currentState;
+          current_process[cpu_id]->p_semAdd = semaddr;
+          insertBlocked(semaddr, current_process[cpu_id]);
+          current_process[cpu_id] = NULL;
+          waiting_count++;
+          schedule();                /* ← NON TORNA */
+      }
+      /* se non blocca, esce dallo switch
+         e finirà nell’LDST comune in coda */
+      break;
+  }
+  
+    case VERHOGEN: {
+        int *semaddr = (int *)currentState->gpr[25]; // a1
+        (*semaddr)++; // incrementa semaforo
+
+       if ((*semaddr) <= 0) {
+          // c'è qualcuno bloccato su questo semaforo: sveglialo
+          pcb_PTR unblocked = removeBlocked(semaddr);
+
+      if (unblocked != NULL) {
+        unblocked->p_semAdd = NULL; // processo ora non più bloccato
+        insertProcQ(&ready_queue, unblocked);
+    }
+}
         break;
     }
     
-      case VERHOGEN: {
-          int *semaddr = (int *)currentState->gpr[25]; // a1
-          (*semaddr)++; // incrementa semaforo
-
-         if ((*semaddr) <= 0) {
-            // c'è qualcuno bloccato su questo semaforo: sveglialo
-            pcb_PTR unblocked = removeBlocked(semaddr);
-
-        if (unblocked != NULL) {
-          unblocked->p_semAdd = NULL; // processo ora non più bloccato
-          insertProcQ(&ready_queue, unblocked);
+    case DOIO: {
+      int  *cmdAddr = (int *)currentState->gpr[25];  /* a1 */
+      int   command =           currentState->gpr[26];  /* a2 */
+      int  *devAddr = (int *)currentState->gpr[27];  /* a3 */
+  
+      updateProcessTime(cpu_id);                      /* ← nuovo passo */
+  
+      current_process[cpu_id]->p_s = *currentState;
+      current_process[cpu_id]->p_semAdd = devAddr;
+      insertBlocked(devAddr, current_process[cpu_id]);
+  
+      current_process[cpu_id] = NULL;
+      waiting_count++;
+  
+      *cmdAddr = command;                             /* scrivi comando */
+      schedule();                                     /* non ritorna    */
       }
-  }
-          break;
-      }
+          
+    case GETTIME: {
+        cpu_t time = GETTIMEsys();
+        currentState->gpr[2] = (unsigned int)time;
+        break;
+    }
+
+    case CLOCKWAIT: {
+      updateProcessTime(cpu_id);                        /* ← nuovo passo */
+  
+      current_process[cpu_id]->p_s = *currentState;
+      current_process[cpu_id]->p_semAdd = &dev_semaph[NRSEMAPHORES-1];
+      insertBlocked(&dev_semaph[NRSEMAPHORES-1], current_process[cpu_id]);
+  
+      current_process[cpu_id] = NULL;
+      waiting_count++;
+      schedule();                                       /* non ritorna   */
+      /* (mai LDST qui) */
       
-      case DOIO: {
-        int  *cmdAddr = (int *)currentState->gpr[25];  /* a1 */
-        int   command =           currentState->gpr[26];  /* a2 */
-        int  *devAddr = (int *)currentState->gpr[27];  /* a3 */
-    
-        updateProcessTime(cpu_id);                      /* ← nuovo passo */
-    
-        current_process[cpu_id]->p_s = *currentState;
-        current_process[cpu_id]->p_semAdd = devAddr;
-        insertBlocked(devAddr, current_process[cpu_id]);
-    
-        current_process[cpu_id] = NULL;
-        waiting_count++;
-    
-        *cmdAddr = command;                             /* scrivi comando */
-        schedule();                                     /* non ritorna    */
+  }
+  
+
+    case GETSUPPORTPTR: {
+        currentState->gpr[2] = (unsigned int)(proc->p_supportStruct);
+        break;
     }
-            
-      case GETTIME: {
-          cpu_t time = GETTIMEsys();
-          currentState->gpr[2] = (unsigned int)time;
-          break;
-      }
 
-      case CLOCKWAIT: {
-        updateProcessTime(cpu_id);                        /* ← nuovo passo */
-    
-        current_process[cpu_id]->p_s = *currentState;
-        current_process[cpu_id]->p_semAdd = &dev_semaph[NRSEMAPHORES-1];
-        insertBlocked(&dev_semaph[NRSEMAPHORES-1], current_process[cpu_id]);
-    
-        current_process[cpu_id] = NULL;
-        waiting_count++;
-        schedule();                                       /* non ritorna   */
-        /* (mai LDST qui) */
-        
+    default: {
+        // Syscall sconosciuta: comportati come un Program Trap
+        programTrapHandler();
+        break;
     }
-    
-
-      case GETSUPPORTPTR: {
-          currentState->gpr[2] = (unsigned int)(proc->p_supportStruct);
-          break;
-      }
-
-      default: {
-          // Syscall sconosciuta: comportati come un Program Trap
-          programTrapHandler();
-          break;
-      }
-  }/* -----------------------------------------------------------------
-    Se siamo arrivati qui significa che:
-    - la syscall NON ha bloccato il processo
-    - NON lo ha terminato
-    -> dobbiamo restituire il controllo all’utente
-   ----------------------------------------------------------------- */
-  LDST(currentState); 
+}/* -----------------------------------------------------------------
+  Se siamo arrivati qui significa che:
+  - la syscall NON ha bloccato il processo
+  - NON lo ha terminato
+  -> dobbiamo restituire il controllo all’utente
+ ----------------------------------------------------------------- */
+LDST(currentState); 
 }
+else {
+    /* numero 1… → verrà trattato da PassUpOrDie     */
+    passUpOrDie(GENERALEXCEPT, getPRID());
+}
+}
+
+
 
 /**
  * Program Trap Handler
@@ -246,16 +271,22 @@ void terminateProcess(pcb_PTR proc) {
 
 
 void exceptionHandler() { //fa il dispatch generale: smista le eccezioni verso il giusto gestore
-   /* 
-   CONTROLLO BY CHATGPT
-   unsigned int mcause = getCAUSE();
-bool isInterrupt = (mcause >> 31) & 0x1;   /* MSB 
-unsigned int exccode = mcause & 0x1F;      /* low 5 bits 
+ //NOTE - controllino di kernel/user mode */
+unsigned status = currentState->status;
+bool user = (status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
+unsigned int code = getCAUSE() & 0x1F;
+bool isInt = getCAUSE() >> 31;
 
-if (isInterrupt) {
-    interruptHandler();
+/* caso syscall */
+if (!isInt && code == 8) {          /* SYSCALL exception */
+    if (user && (int)currentState->gpr[24] < 0) {
+        currentState->cause = PRIVINSTR;
+        programTrapHandler();
+        return;
+    }
+    syscallHandler();
     return;
-}*/
+}
     
     switch((getCAUSE() & GETEXECCODE) >> CAUSESHIFT) {
         case IOINTERRUPTS:

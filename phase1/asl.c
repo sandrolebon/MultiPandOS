@@ -117,6 +117,11 @@ pcb_t* outBlocked(pcb_t* p) {
                 list_for_each_entry(pcb_tmp, &sem_tmp->s_procq, p_list) {
                     if(pcb_tmp == p){
                         list_del(&pcb_tmp->p_list);
+                        if (list_empty(&sem_tmp->s_procq)) {
+                            /* rimuovi semd da ASL e inseriscilo su semdFree_h */
+                            list_del(&sem_tmp->s_link);
+                            list_add(&sem_tmp->s_link, &semdFree_h);
+                        }
                         return p;
                     }
                 }
