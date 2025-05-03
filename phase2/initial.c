@@ -47,19 +47,23 @@ void main() {
     currentState = (state_t *)BIOSDATAPAGE;
     stateCauseReg = &currentState->cause;
     // 3. Inizializzazione Pass-Up Vector per tutte le CPU
-    for(int cpu_id = 0; cpu_id < NCPU; cpu_id++) {
-        passupvector_t *cpu_passup = (passupvector_t *)(PASSUPVECTOR + cpu_id * sizeof(passupvector_t));
-        
-        cpu_passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
-        cpu_passup->exception_handler = (memaddr)exceptionHandler;
-        
-        cpu_passup->tlb_refill_stackPtr = (cpu_id == 0) ? 
-            KERNELSTACK : 
-            RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
-            
-        cpu_passup->exception_stackPtr = (cpu_id == 0) ? 
-            KERNELSTACK : 
-            0x20020000 + (cpu_id * PAGESIZE);
+    passupvector = (passupvector_t *) PASSUPVECTOR;
+    // Pass Up Vector for CPU 0
+    passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+    passupvector->exception_handler = (memaddr) exceptionHandler;
+    passupvector->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
+    passupvector->exception_stackPtr = (memaddr) KERNELSTACK;
+   
+  
+  
+   
+  
+    // Pass Up Vector for CPU >=1
+   for(int cpu_id = 0; cpu_id < NCPU; cpu_id++){
+      passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
+      passupvector->exception_handler = (memaddr) exceptionHandler;
+      passupvector->tlb_refill_stackPtr = (memaddr) RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
+      passupvector->exception_stackPtr = (memaddr) 0x20020000 + (cpu_id * PAGESIZE);    
     }
 
     // 4. Configurazione IRT (Interrupt Routing Table)
