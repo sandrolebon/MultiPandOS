@@ -11,6 +11,7 @@ extern int dev_semaph[NRSEMAPHORES];
 extern struct list_head pseudoclock_blocked_list;
 extern int process_count;
 extern int waiting_count;
+extern int global_lock;
 extern struct list_head ready_queue;
 extern state_t *currentState;
 extern unsigned int *stateCauseReg;
@@ -22,298 +23,444 @@ void exceptionHandler(); //Riceve qualsiasi eccezione o interrupt; smista in bas
 void terminateProcess(pcb_PTR proc);
 void passUpOrDie(int exceptionType, int cpu_id); //Passa l'eccezione al processo padre o termina il processo corrente
 
+/**
+ * Passa la gestione dell'eccezione al Support Level o termina il processo
+ * @param exceptionType PGFAULTEXCEPT (0) o GENERALEXCEPT (1)
+ * @param cpu_id ID della CPU dove è avvenuta l'eccezione
+ */
 void passUpOrDie(int exceptionType, int cpu_id) {
-    if (current_process[cpu_id]->p_supportStruct != NULL) {
-        support_t *support = current_process[cpu_id]->p_supportStruct;
-        support->sup_exceptState[exceptionType] = *currentState;
-        LDST(&(support->sup_exceptContext[exceptionType]));
-    } else {
-        terminateProcess(current_process[cpu_id]);
-        schedule();
+    /* === 1. Verifiche di sicurezza === */
+    if (cpu_id < 0 || cpu_id >= NCPU || !current_process[cpu_id] || !currentState) {
+        PANIC(); // Stato o processo non validi
     }
-}
 
-//TODO - scegliere un approccio: o tremila funzioni o all you can switch
-cpu_t GETTIMEsys() {
-    int cpu_id = getPRID();
-    cpu_t now;
-    STCK(now);
-    cpu_t start = current_process[cpu_id]->p_s.gpr[5]; // gpr[5] (t0) contiene p_s_time: inizio dell’attuale time slice
-    return current_process[cpu_id]->p_time + (now - start);
+    /* === 2. Controllo bounds exceptionType === */
+    if (exceptionType != PGFAULTEXCEPT && exceptionType != GENERALEXCEPT) {
+        exceptionType = GENERALEXCEPT; // Fallback sicuro
+    }
+
+    pcb_PTR proc = current_process[cpu_id];
+    
+    /* === 3. Pass-up al Support Level (se disponibile) === */
+    if (proc->p_supportStruct != NULL) {
+        support_t *support = proc->p_supportStruct;
+        
+        /* --- Copia atomica dello stato --- */
+        memcpy(&support->sup_exceptState[exceptionType], 
+               currentState, 
+               sizeof(state_t));
+        
+        /* --- Controllo integrità contesto --- */
+        if (!support->sup_exceptContext[exceptionType].pc ||
+            !support->sup_exceptContext[exceptionType].stackPtr) {
+            PANIC(); // Contesto corrotto
+        }
+
+        /* --- Switch al Support Level --- */
+        LDCXT(
+            support->sup_exceptContext[exceptionType].stackPtr,
+            support->sup_exceptContext[exceptionType].status,
+            support->sup_exceptContext[exceptionType].pc
+        );
+        __builtin_unreachable(); //NOTE -  solito discorso: un po too much?
+    } 
+    /* === 4. Terminazione processo (die) === */
+    else {
+        ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+        terminateProcess(proc);
+        RELEASE_LOCK((volatile unsigned int*)&global_lock);
+        
+        schedule();
+        __builtin_unreachable();
+    }
 }
 
 /* --------------------------------------------------------------------
    Aggiorna p_time del processo che sta girando sulla CPU indicata
    usando gpr[5] --> p_s_time   (vedi discussione precedente)
    ------------------------------------------------------------------ */
-   void updateProcessTime(int cpu_id)
-{
-    cpu_t now; STCK(now);                          /* TOD clock attuale */
-    pcb_PTR p = current_process[cpu_id];
-    if (p == NULL) return;                         /* nessun processo   */
-    cpu_t start = p->p_s.gpr[5];                   /* slice start       */
-    p->p_time += (now - start);                    /* accumula tempo    */
-}
-
-static void syscallHandler() {
-  int cpu_id = getPRID();
-  pcb_PTR proc = current_process[cpu_id];
-
-  // Avanza il Program Counter per evitare di ripetere la syscall
-  currentState->pc_epc += 4;
-
-  unsigned int syscall_num = currentState->gpr[24]; // a0 contiene il numero della syscall
-  /* Recupero numero syscall (a0) */
-unsigned int num = currentState->gpr[24];      /* a0 */
-
-/* 1. Se il numero è negativo → syscall di Nucleo    */
-if ((int)num < 0) {
-
-    /* 1a. Controllo privilegi                        */
-    bool inUser = (currentState->status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
-
-    if (inUser) {
-        /* Simula Program Trap “PrivInstr”            */
-        currentState->cause = PRIVINSTR;             /* ecc-code 10 */
-        programTrapHandler();                        /* passUpOrDie */
-        return;                                      /* NON eseguire case */
-    }
-
-    /* 1b.  Siamo in kernel‑mode → gestisci la syscall normally */
-    //TODO - sto switch è un puttanaio
-  switch (syscall_num) {
-    case CREATEPROCESS: {
-        pcb_PTR newProc = allocPcb();
-        if (newProc == NULL) {
-            currentState->gpr[2] = (unsigned int)NOPROC; // v0 <- -1 (errore)
-        } else {
-            newProc->p_s = *((state_t *)currentState->gpr[25]); // a1 = stato iniziale
-            newProc->p_time = 0;
-            newProc->p_semAdd = NULL;
-            newProc->p_supportStruct = (support_t *)currentState->gpr[26]; // a2 = supporto, può essere NULL
-            insertProcQ(&ready_queue, newProc);
-            newProc->p_parent = proc;
-            list_add_tail(&newProc->p_list, &proc->p_child);
-            process_count++;
-            currentState->gpr[2] = 0; // v0 <- 0 (successo)
-        }
-        break;
-    }
-
-    case TERMPROCESS: {
-        terminateProcess(proc);
-        schedule(); // Non ritorniamo più da qui
-        break;
-    }
-
-    case PASSEREN: {
-      int *semaddr = (int*)currentState->gpr[25];
-  
-      (*semaddr)--;
-      if (*semaddr < 0) {
-          /* dovrà bloccare -> aggiorna tempo, inserisci su ASL, schedule() */
-          updateProcessTime(cpu_id);
-          current_process[cpu_id]->p_s = *currentState;
-          current_process[cpu_id]->p_semAdd = semaddr;
-          insertBlocked(semaddr, current_process[cpu_id]);
-          current_process[cpu_id] = NULL;
-          waiting_count++;
-          schedule();                /* ← NON TORNA */
-      }
-      /* se non blocca, esce dallo switch
-         e finirà nell’LDST comune in coda */
-      break;
-  }
-  
-    case VERHOGEN: {
-        int *semaddr = (int *)currentState->gpr[25]; // a1
-        (*semaddr)++; // incrementa semaforo
-
-       if ((*semaddr) <= 0) {
-          // c'è qualcuno bloccato su questo semaforo: sveglialo
-          pcb_PTR unblocked = removeBlocked(semaddr);
-
-      if (unblocked != NULL) {
-        unblocked->p_semAdd = NULL; // processo ora non più bloccato
-        insertProcQ(&ready_queue, unblocked);
-    }
-}
-        break;
+/**
+ * Aggiorna il tempo CPU accumulato dal processo in esecuzione
+ * 
+ * @param cpu_id ID della CPU dove è in esecuzione il processo
+ * 
+ * Comportamento:
+ * 1. Legge il timer di sistema (TOD)
+ * 2. Calcola il tempo trascorso dall'inizio del timeslice
+ * 3. Aggiorna p_time nel PCB
+ * 
+ * Note:
+ * - Usa gpr[5] (t0) come storage temporaneo per il tempo di inizio
+ * - Safe da chiamare anche senza processo corrente (no-op)
+ */
+void updateProcessTime(int cpu_id) {
+    cpu_t now; 
+    STCK(now);  // Legge il Time-Of-Day clock
+    
+    if (current_process[cpu_id] == NULL) {
+        return;  // Nessun processo in esecuzione
     }
     
-    case DOIO: {
-      int  *cmdAddr = (int *)currentState->gpr[25];  /* a1 */
-      int   command =           currentState->gpr[26];  /* a2 */
-      int  *devAddr = (int *)currentState->gpr[27];  /* a3 */
-  
-      updateProcessTime(cpu_id);                      /* ← nuovo passo */
-  
-      current_process[cpu_id]->p_s = *currentState;
-      current_process[cpu_id]->p_semAdd = devAddr;
-      insertBlocked(devAddr, current_process[cpu_id]);
-  
-      current_process[cpu_id] = NULL;
-      waiting_count++;
-  
-      *cmdAddr = command;                             /* scrivi comando */
-      schedule();                                     /* non ritorna    */
-      }
-          
-    case GETTIME: {
-        cpu_t time = GETTIMEsys();
-        currentState->gpr[2] = (unsigned int)time;
-        break;
+    pcb_PTR p = current_process[cpu_id];
+    cpu_t start_time = p->p_s.gpr[5];  // Tempo di inizio salvato in t0
+    
+    // Calcola e aggiorna il tempo CPU (in microsecondi)
+    p->p_time += (now - start_time);
+    
+    // Aggiorna il tempo di inizio per il prossimo ciclo
+    p->p_s.gpr[5] = now;
+}
+
+/**
+ * System Call Handler - Gestisce tutte le syscall del kernel
+ * 
+ * Patch applicate:
+ * 1. Controllo stato processo NULL
+ * 2. Locking migliorato per operazioni atomiche
+ * 3. Gestione errori estesa
+ * 4. Ottimizzazione accessi a memoria
+ */
+/**
+ * System Call Handler - Conforme alle specifiche Phase 2
+ * Gestisce tutte le syscall obbligatorie (NSYS1-NSYS9)
+ */
+static void syscallHandler() {
+    const int cpu_id = getPRID();
+    
+    /* === 1. Verifiche di sicurezza === */
+    if (!currentState || !current_process[cpu_id]) {
+        PANIC();
     }
 
-    case CLOCKWAIT: {
-      updateProcessTime(cpu_id);                        /* ← nuovo passo */
-  
-      current_process[cpu_id]->p_s = *currentState;
-      current_process[cpu_id]->p_semAdd = &dev_semaph[NRSEMAPHORES-1];
-      insertBlocked(&dev_semaph[NRSEMAPHORES-1], current_process[cpu_id]);
-  
-      current_process[cpu_id] = NULL;
-      waiting_count++;
-      schedule();                                       /* non ritorna   */
-      /* (mai LDST qui) */
-      
-  }
-  
+    pcb_PTR proc = current_process[cpu_id];
+    currentState->pc_epc += 4; // Avanza PC
 
-    case GETSUPPORTPTR: {
-        currentState->gpr[2] = (unsigned int)(proc->p_supportStruct);
-        break;
+    /* === 2. Estrazione parametri === */
+    const int syscall_num = (int)currentState->gpr[24]; // a0
+    const bool kernel_mode = (currentState->status & MSTATUS_MPP_MASK) != MSTATUS_MPP_U;
+
+    /* === 3. Syscall privilegiate (negative) === */
+    if (syscall_num < 0) {
+        /* --- Controllo privilegi --- */
+        if (!kernel_mode) {
+            currentState->cause = PRIVINSTR;
+            programTrapHandler(cpu_id);
+            return;
+        }
+
+        ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+
+        switch (syscall_num) {
+            /* --- NSYS1: CREATEPROCESS (-1) --- */
+            case CREATEPROCESS: {
+                state_t *init_state = (state_t *)currentState->gpr[25]; // a1
+                support_t *support = (support_t *)currentState->gpr[27]; // a3
+                
+                pcb_PTR new_proc = allocPcb();
+                if (!new_proc) {
+                    currentState->gpr[2] = NOPROC; // v0 = -1
+                } else {
+                    memcpy(&new_proc->p_s, init_state, sizeof(state_t));
+                    new_proc->p_time = 0;
+                    new_proc->p_semAdd = NULL;
+                    new_proc->p_supportStruct = support;
+
+                    insertProcQ(&ready_queue, new_proc);
+                    insertChild(proc, new_proc);
+                    process_count++;
+                    
+                    currentState->gpr[2] = 0; // v0 = 0 (success)
+                }
+                break;
+            }
+
+            /* --- NSYS2: TERMPROCESS (-2) --- */
+            case TERMPROCESS: {
+                int target_pid = (int)currentState->gpr[25]; // a1
+                pcb_PTR target = NULL;
+            
+                /* --- Caso 1: Termina il processo corrente --- */
+                if (target_pid == 0) {
+                    target = proc;
+                }
+                /* --- Caso 2: Termina un child diretto (se esiste) --- */
+                else {
+                    // Cerca solo tra i figli diretti
+                    struct list_head *pos;
+                    list_for_each(pos, &proc->p_child) {
+                        pcb_PTR child = container_of(pos, pcb_t, p_list);
+                        if (child->p_pid == target_pid) {
+                            target = child;
+                            break;
+                        }
+                    }
+                    if (!target) {
+                        PANIC(); // PID non trovato tra i figli
+                        __builtin_unreachable();
+                    }
+                }
+            
+                /* --- Esecuzione terminazione --- */
+                terminateProcess(target);
+                RELEASE_LOCK((volatile unsigned int*)&global_lock);
+                schedule();
+                __builtin_unreachable();
+            }
+            
+            
+
+            /* --- NSYS3: PASSEREN (-3) --- */
+            case PASSEREN: {
+                int *semaddr = (int *)currentState->gpr[25]; // a1
+                int old_val = *semaddr;
+                *semaddr = old_val - 1;
+
+                if (old_val <= 0) {
+                    proc->p_s = *currentState;
+                    proc->p_semAdd = semaddr;
+                    insertBlocked(semaddr, proc);
+                    current_process[cpu_id] = NULL;
+                    waiting_count++;
+
+                    RELEASE_LOCK((volatile unsigned int*)&global_lock);
+                    schedule();
+                    __builtin_unreachable();
+                }
+                break;
+            }
+
+            /* --- NSYS4: VERHOGEN (-4) --- */
+            case VERHOGEN: {
+                int *semaddr = (int *)currentState->gpr[25]; // a1
+                *semaddr += 1;
+
+                if (*semaddr <= 0) {
+                    pcb_PTR unblocked = removeBlocked(semaddr);
+                    if (unblocked) {
+                        insertProcQ(&ready_queue, unblocked);
+                    }
+                }
+                break;
+            }
+
+            /* --- NSYS5: DOIO (-5) --- */
+            case DOIO: {
+                int *cmd_addr = (int *)currentState->gpr[25]; // a1
+                int command = currentState->gpr[26]; // a2
+                int *dev_addr = (int *)currentState->gpr[27]; // a3
+
+                proc->p_s = *currentState;
+                proc->p_semAdd = dev_addr;
+                insertBlocked(dev_addr, proc);
+                current_process[cpu_id] = NULL;
+                waiting_count++;
+
+                *cmd_addr = command; // Scrive sul device DOPO il blocco
+                
+                RELEASE_LOCK((volatile unsigned int*)&global_lock);
+                schedule();
+                __builtin_unreachable();
+            }
+
+            /* --- NSYS6: GETTIME (-6) --- */
+            case GETTIME: {
+                cpu_t now, start = proc->p_s.gpr[5]; // t0 = start time
+                STCK(now);
+                currentState->gpr[2] = proc->p_time + (now - start);
+                break;
+            }
+
+            /* --- NSYS7: CLOCKWAIT (-7) --- */
+            case CLOCKWAIT: {
+                proc->p_s = *currentState;
+                proc->p_semAdd = &dev_semaph[NRSEMAPHORES-1]; // Semaforo pseudo-clock
+                insertBlocked(proc->p_semAdd, proc);
+                current_process[cpu_id] = NULL;
+                waiting_count++;
+
+                RELEASE_LOCK((volatile unsigned int*)&global_lock);
+                schedule();
+                __builtin_unreachable();
+            }
+
+            /* --- NSYS8: GETSUPPORTPTR (-8) --- */
+            case GETSUPPORTPTR: {
+                currentState->gpr[2] = (unsigned int)proc->p_supportStruct;
+                break;
+            }
+
+            /* --- NSYS9: GETPROCESSID (-9) --- */
+            case GETPROCESSID: {
+                int get_parent = (int)currentState->gpr[25]; // a1
+                currentState->gpr[2] = get_parent ? proc->p_parent->p_pid : proc->p_pid;
+                break;
+            }
+
+            default:
+                RELEASE_LOCK((volatile unsigned int*)&global_lock);
+                programTrapHandler(cpu_id);
+                return;
+        }
+
+        RELEASE_LOCK((volatile unsigned int*)&global_lock);
+        LDST(currentState);
+        return;
     }
 
-    default: {
-        // Syscall sconosciuta: comportati come un Program Trap
-        programTrapHandler();
-        break;
-    }
-}/* -----------------------------------------------------------------
-  Se siamo arrivati qui significa che:
-  - la syscall NON ha bloccato il processo
-  - NON lo ha terminato
-  -> dobbiamo restituire il controllo all’utente
- ----------------------------------------------------------------- */
-LDST(currentState); 
+    /* === 4. Syscall standard (positive) === */
+    passUpOrDie(GENERALEXCEPT, cpu_id);
 }
-else {
-    /* numero 1… → verrà trattato da PassUpOrDie     */
-    passUpOrDie(GENERALEXCEPT, getPRID());
-}
-}
+
+
+
 
 
 
 /**
- * Program Trap Handler
+ * Gestore dei Program Trap (eccezioni software/privilegi)
+ * 
+ * Cosa gestisce:
+ * - Istruzioni illegali
+ * - Accessi invalidi alla memoria
+ * - Syscall privilegiate eseguite in user-mode
+ * 
+ * Comportamento:
+ * 1. Termina il processo colpevole e tutta la sua discendenza
+ * 2. Richiama lo scheduler
+ * 
+ * Note:
+ * - Deve essere chiamato con current_process[cpu_id] non NULL
+ * - Non ritorna al chiamante (transizione a schedule())
  */
 static void programTrapHandler() {
-    // Terminate the process that caused illegal instruction
-    int cpu_id = getPRID();
+    const int cpu_id = getPRID();
+    
+    /* 1. Controllo di sicurezza (non dovrebbe mai fallire) */
+    if (current_process[cpu_id] == NULL) {
+        PANIC();  // Caso anomalo: trap senza processo corrente
+    }
+
+    /* 2. Aggiornamento tempo CPU prima della terminazione */
+    updateProcessTime(cpu_id);
+
+    /* 3. Terminazione del processo (e di tutta la sua discendenza) */
+    ACQUIRE_LOCK((volatile unsigned int*)&global_lock);  // Protegge ready_queue, process_count, etc.
     terminateProcess(current_process[cpu_id]);
+    RELEASE_LOCK((volatile unsigned int*)&global_lock);
+
+    /* 4. Passa il controllo allo scheduler */
     schedule();
+       /* 5. Punto irraggiungibile (schedule() non ritorna) 
+       __builtin_unreachable(); */ //TODO carcola che dipsìk propone chist ma manco l'implementa, non so se ci sia una cosa analoga, forse LDST????
 }
 
+
+/**
+ * Termina un processo e tutta la sua discendenza (albero di processi)
+ * //NOTE - porcoddueee fa 
+ * @param proc Processo da terminare (non NULL)
+ * @pre: global_lock deve essere già acquisito dal chiamante
+ * @post: Tutti i PCB dell'albero sono deallocati
+ * 
+ * Comportamento:
+ * 1. Termina ricorsivamente tutti i figli
+ * 2. Rimuove il processo dalle code/strutture del kernel
+ * 3. Aggiorna i contatori globali (process_count, waiting_count)
+ * 4. Rilascia le risorse (PCB, semafori, etc.)
+ * 
+ * Note:
+ * - Deve essere chiamato con il global_lock acquisito
+ * - Gestisce sia processi running che bloccati/ready
+ */
 void terminateProcess(pcb_PTR proc) {
-  pcb_PTR child;
-  int cpu_id = getPRID();
+    const int cpu_id = getPRID();
+    
+    /* === 1. Verifiche di sicurezza === */
+    if (proc == NULL || proc->p_list.next == NULL) {
+        PANIC(); // PCB corrotto o già deallocato
+    }
 
-  /* se proc è quello in esecuzione su questa CPU,
-     aggiorno p_time PRIMA di toccarlo               */
-  if (proc == current_process[cpu_id]) {
-      updateProcessTime(cpu_id);                 
-      current_process[cpu_id] = NULL;
-  }
+    /* === 2. Terminazione ricorsiva figli === */
+    while (!list_empty(&proc->p_child)) {
+        pcb_PTR figlio = container_of(proc->p_child.next, pcb_t, p_list);
+        terminateProcess(figlio); // Lock già acquisito
+    }
 
-  // Termina ricorsivamente tutti i figli
-  while (!list_empty(&proc->p_child)) {
-      child = container_of(proc->p_child.next, pcb_t, p_list);
-      terminateProcess(child);
-  }
+    /* === 3. Rimozione da strutture kernel (atomica) === */
+    if (proc->p_semAdd != NULL) {
+        /* --- Caso bloccato su semaforo --- */
+        pcb_PTR rimosso = outBlocked(proc);
+        if (rimosso) {
+            // Patch: Macro per identificare tipo semaforo
+            #define IS_DEV_SEM(sem) \
+                ((sem) >= &dev_semaph[0] && (sem) <= &dev_semaph[NRSEMAPHORES-1])
+            
+            if (IS_DEV_SEM(proc->p_semAdd)) {
+                waiting_count--; // Semaforo dispositivo
+            } else {
+                (*(proc->p_semAdd))++; // Operazione V atomica
+            }
+        }
+    } else if (!list_empty(&proc->p_list)) {
+        /* --- Caso ready --- */
+        outProcQ(&ready_queue, proc);
+    }
 
-  // Se il processo è bloccato su un semaforo
-  if (proc->p_semAdd != NULL) {
-      pcb_PTR removed = outBlocked(proc);
-      if (removed != NULL) {
-          if ((int)(proc->p_semAdd) >= (int)&dev_semaph[0] && (int)(proc->p_semAdd) < (int)&dev_semaph[NRSEMAPHORES]) {
-              // Era bloccato su un semaforo di DEVICE o CLOCK
-              waiting_count--;
-            } else if (proc->p_semAdd == &dev_semaph[NRSEMAPHORES-1]) {
-                         waiting_count--;                 /* pseudo-clock    */
-                     } else {
-              // Era bloccato su semafori normali: faccio V
-              (*(proc->p_semAdd))++;
-          }
-      }} else {
-  }
+    /* === 4. Pulizia stato processo === */
+    if (proc == current_process[cpu_id]) {
+        current_process[cpu_id] = NULL;
+        // Patch: Aggiorna tempo CPU prima della rimozione
+        updateProcessTime(cpu_id);
+    }
 
-  // Se era nella ready queue
-  if (proc == current_process[cpu_id]) {
-      updateProcessTime(cpu_id);
-      current_process[cpu_id] = NULL;
-  } else {
-      outProcQ(&ready_queue, proc);
-  }//TODO - CPU_ID O GETPRID???
+    /* === 5. Aggiornamento contatori globali === */
+    process_count--; // Atomico (lock già acquisito)
 
-  // Aggiorna contatore processi
-  process_count--;
-  if (proc == current_process[cpu_id]) {
-    cpu_t now;
-    STCK(now);
-    cpu_t start = proc->p_s.gpr[5];
-    proc->p_time += (now - start);
-}
-  // Libera il PCB
-  freePcb(proc);
+    /* === 6. Deallocazione sicura === */
+    memset(proc, 0, sizeof(pcb_t)); // Azzera memoria per sicurezza
+    freePcb(proc);
 }
 
 
-void exceptionHandler() { //fa il dispatch generale: smista le eccezioni verso il giusto gestore
- //NOTE - controllino di kernel/user mode */
-unsigned status = currentState->status;
-bool user = (status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
-unsigned int code = getCAUSE() & 0x1F;
-bool isInt = getCAUSE() >> 31;
+/**
+ * Main exception dispatcher - Corrected version with non-overlapping cases
+ */
+void exceptionHandler() {
+    const int cpu_id = getPRID();
+    const unsigned int cause = getCAUSE();
+    const bool is_interrupt = (cause >> 31) & 0x1;
+    const unsigned int exc_code = cause & 0x1F;
+    const bool user_mode = (currentState->status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
 
-/* caso syscall */
-if (!isInt && code == 8) {          /* SYSCALL exception */
-    if (user && (int)currentState->gpr[24] < 0) {
-        currentState->cause = PRIVINSTR;
-        programTrapHandler();
+    /* --- SYSCALL exception (code 8) --- */
+    if (!is_interrupt && exc_code == 8) {
+        const int syscall_num = (int)currentState->gpr[24];  // a0
+        if (user_mode && syscall_num < 0) {
+            currentState->cause = PRIVINSTR;
+            programTrapHandler(cpu_id);
+            return;
+        }
+        syscallHandler();
         return;
     }
-    syscallHandler();
-    return;
-}
-    
-    switch((getCAUSE() & GETEXECCODE) >> CAUSESHIFT) {
-        case IOINTERRUPTS:
-            // External Device Interrupt
-            interruptHandler();
-            break;
-        case 1 ... 3:
-            // TLB Exception
-            // uTLB_RefillHandler();
-            passUpOrDie(PGFAULTEXCEPT, getPRID());
-            break;
-        case 4 ... 7:
-            // Program Traps p1: Address and Bus Error Exception
-            passUpOrDie(GENERALEXCEPT, getPRID());
-            break;
-        case SYSEXCEPTION: 
-            // Syscalls
-            syscallHandler();
-		    break;
-        case 9 ... 12:
-            // Breakpoint Calls, Program Traps p2
-            passUpOrDie(GENERALEXCEPT, getPRID());
-            break;
-        default: 
-            // Wrong ExcCode
-            passUpOrDie(GENERALEXCEPT, getPRID());
-            break;
-	}
-}
 
+    /* --- Non-overlapping exception routing --- */
+    if (is_interrupt) {
+        // All hardware interrupts (codes 1-23 with high bit set)
+        interruptHandler();
+    } else {
+        switch(exc_code) {
+            /* TLB Exceptions (24-28) */
+            case 24 ... 28:
+                passUpOrDie(PGFAULTEXCEPT, cpu_id);
+                break;
+                
+            /* Program Traps */
+            case 0 ... 7:    // Address/Bus errors
+            case 9 ... 12:   // Breakpoints/illegal instructions
+            default:
+                passUpOrDie(GENERALEXCEPT, cpu_id);
+                break;
+        }
+    }
+}

@@ -14,7 +14,6 @@ extern void exceptionHandler();
 //NOTE - funzione punto di partenza per il primo processo creato durante inizializzazione del sistema
 extern void test(); //pare che questa cosa dell'extern serva per rendere la funzione visibile al linker
 extern void schedule(); //TODO - uguale a sotto zioponi
-static void initialize(); //TODO not sure sia dichiarata così
 int dev_semaph[NRSEMAPHORES]; //con questo array gestisco i Device Semaphores
 int process_count;  // number of processes started but not yet terminated
 int waiting_count; // number of soft-blocked processes 
@@ -35,83 +34,75 @@ void *memset (void *dest, register int val, register size_t len)
   return dest;
 }
 //entry point del sistema operativo
-void main(){
-    //nucleus initialization
-    initialize();
+void main() {
+    // 1. Inizializzazione strutture dati
+    initPcbs();
+    initASL();
 
-    //Load interval timer 100ms
-    LDIT(PSECOND);
+    // 2. Inizializzazione variabili globali
+    process_count = 0;
+    waiting_count = 0;
+    global_lock = 0;
+    mkEmptyProcQ(&ready_queue);
+    currentState = (state_t *)BIOSDATAPAGE;
+    stateCauseReg = &currentState->cause;
+    // 3. Inizializzazione Pass-Up Vector per tutte le CPU
+    for(int cpu_id = 0; cpu_id < NCPU; cpu_id++) {
+        passupvector_t *cpu_passup = (passupvector_t *)(PASSUPVECTOR + cpu_id * sizeof(passupvector_t));
+        
+        cpu_passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
+        cpu_passup->exception_handler = (memaddr)exceptionHandler;
+        
+        cpu_passup->tlb_refill_stackPtr = (cpu_id == 0) ? 
+            KERNELSTACK : 
+            RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
+            
+        cpu_passup->exception_stackPtr = (cpu_id == 0) ? 
+            KERNELSTACK : 
+            0x20020000 + (cpu_id * PAGESIZE);
+    }
 
-    //istantiate a first process
-    pcb_PTR next_process = allocPcb();
-    next_process->p_s.mie = MIE_ALL; //abilito il bit "Machine Interrupt Enable"; MIE_ALL abilita tutti gli interrupt
-    next_process->p_s.status |= MSTATUS_MPIE_MASK   /* prev-IE  */
-                             | MSTATUS_MPP_M;     /* kernel   */
-    RAMTOP(next_process->p_s.reg_sp); //imposto lo stack pointer ad indirizzo RAMPTOP (quindi la cima della memoria RAM disponibile per lo stack del kernel, che crescerà poi verso indirizzi inferiori)
-    next_process->p_s.pc_epc = (memaddr)test; //il program counter pc_epc conterrà l'indirizzo della prima istruzione che il processo deve eseguire 
-    STCK(next_process->p_s.gpr[5]); //contenere l’istante preciso in cui il processo inizia il time-slice
-    next_process->p_time = 0; //azzero contatore tempo CPU usato dal processo
-    next_process->p_semAdd = NULL; //il processo NON e' bloccato su alcun semaforo
-    next_process->p_supportStruct = NULL; //il processo NON ha una struttura di supporto associata (serve solo a proc. di supporto avanzati)
-    //inserisco il primo processo nella coda processi disponibili, aumento il contatore dei processi;
-    insertProcQ(&ready_queue, next_process);   
+    // 4. Configurazione IRT (Interrupt Routing Table)
+    for (int i = 0; i < IRT_NUM_ENTRY; i++) {
+        int cpu_id = i / (IRT_NUM_ENTRY / NCPU); // 6 entry per CPU
+        unsigned int dest = 1 << cpu_id;
+        *((unsigned int*)(IRT_START + i*4)) = IRT_RP_BIT_ON | dest;
+    }
+
+    // 5. Inizializzazione timer di sistema
+    LDIT(PSECOND * (*(cpu_t *)TIMESCALEADDR));
+
+    // 6. Creazione processo iniziale (test)
+    pcb_PTR initial_pcb = allocPcb();
+    if (!initial_pcb) PANIC(); // Fallimento allocazione
+    
+    // Inizializzazione stato del processo
+    initial_pcb->p_s.mie = MIE_ALL;
+    initial_pcb->p_s.status = MSTATUS_MPIE_MASK | MSTATUS_MPP_M;
+    RAMTOP(initial_pcb->p_s.reg_sp);
+    initial_pcb->p_s.pc_epc = (memaddr)test;
+    
+    // Inizializzazione altri campi PCB
+    initial_pcb->p_time = 0;
+    initial_pcb->p_semAdd = NULL;
+    initial_pcb->p_supportStruct = NULL;
+    
+    // Inserimento in ready queue
+    insertProcQ(&ready_queue, initial_pcb);
     process_count++;
-    
-    schedule(); //chiamo lo scheduler
-    
-}
 
+    // 7. Inizializzazione altri processori
+    for (int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
+        state_t cpu_state;
+        memset(&cpu_state, 0, sizeof(state_t));
+        
+        cpu_state.status = MSTATUS_MPP_M;
+        cpu_state.pc_epc = (memaddr)schedule;
+        cpu_state.reg_sp = 0x20020000 + (cpu_id * PAGESIZE);
+        
+        INITCPU(cpu_id, &cpu_state);
+    }
 
-static void initialize() {
-    // Pass Up Vector: Tabella di riferimento per il BIOS. Quando il processore rileva un'eccezione 
-    // (esclusi alcuni casi gestiti direttamente dal BIOS) o un evento di TLB-Refill, 
-    // il BIOS consulta il Pass Up Vector della CPU corrente per determinare 
-    // a quale funzione del Nucleo passare il controllo e quale stack utilizzare 
-    // per l'esecuzione di quel gestore 
-    //TODO - check this shit out che non sono sicuro
-  // 1. Correggiamo l'inizializzazione dei Pass Up Vector per CPU multiple
-  passupvector = (passupvector_t *) PASSUPVECTOR;
-  
-  // CPU 0 (già corretto)
-  passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-  passupvector->exception_handler = (memaddr) exceptionHandler;
-  passupvector->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
-  passupvector->exception_stackPtr = (memaddr) KERNELSTACK;
-
-  // Per CPU 1-7 dobbiamo usare l'offset corretto nel Pass Up Vector
-  for(int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
-      passupvector_t* cpu_passup = (passupvector_t*)(PASSUPVECTOR + (cpu_id * sizeof(passupvector_t)));
-      
-      cpu_passup->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-      cpu_passup->exception_handler = (memaddr) exceptionHandler;
-      cpu_passup->tlb_refill_stackPtr = RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
-      cpu_passup->exception_stackPtr = 0x20020000 + (cpu_id * PAGESIZE);
-  }
-
-  // 2. Semplifichiamo l'inizializzazione dell'IRT
-  for (int i = 0; i < IRT_NUM_ENTRY; i++) {
-      int cpu_id = i / 6;  // 6 entry per CPU
-      unsigned int dest_mask = 1 << cpu_id;
-      volatile unsigned int* irt_entry = (unsigned int*)(IRT_START + i * 4);
-      *irt_entry = IRT_RP_BIT_ON | dest_mask;
-  }
-
-  // 3. Inizializzazione strutture dati Level 2
-  initPcbs();
-  initASL();
-
-  // 4. Inizializzazione variabili globali
-  process_count = 0;
-  waiting_count = 0;
-  global_lock = 0;
-  mkEmptyProcQ(&ready_queue);
-  mkEmptyProcQ(&pseudoclock_blocked_list); // Aggiungiamo questa
-
-  // 5. Setup stato corrente e registri
-  currentState = GET_EXCEPTION_STATE_PTR(0); // Usiamo la macro invece dell'indirizzo diretto
-  stateCauseReg = &currentState->cause;
-
-  // 6. Inizializzazione array processi e semafori
-  memset(current_process, 0, sizeof(pcb_PTR) * NCPU);
-  memset(dev_semaph, 0, sizeof(int) * NRSEMAPHORES);
+    // 8. Avvio scheduler
+    schedule();
 }

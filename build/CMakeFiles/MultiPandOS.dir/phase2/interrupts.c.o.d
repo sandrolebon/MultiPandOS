@@ -18,4 +18,5 @@ CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o: \
  /home/alessandro/MultiPandOS/phase2/../phase1/headers/pcb.h \
  /home/alessandro/MultiPandOS/phase2/../phase1/headers/../../headers/listx.h \
  /home/alessandro/MultiPandOS/phase2/../phase1/headers/../../headers/types.h \
+ /home/alessandro/MultiPandOS/phase2/../phase1/headers/asl.h \
  /usr/include/uriscv/cpu.h

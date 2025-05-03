@@ -7,6 +7,7 @@
         "liburiscv.h": "c",
         "const.h": "c",
         "types.h": "c",
-        "cpu.h": "c"
+        "cpu.h": "c",
+        "stdio.h": "c"
     }
 }

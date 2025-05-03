@@ -3,6 +3,7 @@
 #include "../headers/const.h"
 #include "../headers/types.h"
 #include "../phase1/headers/pcb.h"
+#include "../phase1/headers/asl.h"
 extern pcb_PTR current_process[NCPU];
 extern struct list_head ready_queue;
 extern state_t *currentState;
@@ -11,6 +12,7 @@ extern unsigned int *stateCauseReg;
 extern int dev_semaph[NRSEMAPHORES];
 extern int global_lock;
 extern void updateProcessTime(int cpu_id);
+extern void schedule();
 static void handlePLT(int cpu_id);
 static void handleIntervalTimer(void);
 void interruptHandler();
@@ -19,109 +21,172 @@ void interruptHandler();
 /* ------------------------------------------------------------------
    Gestione della linea‑1  (Processor Local Timer – PLT)
    ------------------------------------------------------------------ */
-   static void handlePLT(int cpu_id)
-   {
-       /* 1. Aggiorna il tempo CPU del PCB corrente */
-       updateProcessTime(cpu_id);
-   
-       /* 2. Salva lo stato corrente nel PCB e rimetti in ready queue */
-       if (current_process[cpu_id] != NULL) {
-           current_process[cpu_id]->p_s = *currentState;
-           insertProcQ(&ready_queue, current_process[cpu_id]);
-       }
-   
-       /* 3. Azzeriamo current_process e ricarichiamo il PLT */
-       current_process[cpu_id] = NULL;
-       setTIMER(TIMESLICE);                /* 5 ms per nuovo time‑slice */
-   
-       /* 4. Chiamata allo scheduler (non ritorna) */
-       schedule();
-   }
+/**
+ * Gestore del Processor Local Timer (PLT)
+ * 
+ * Comportamento:
+ * 1. Salva il tempo CPU usato dal processo corrente
+ * 2. Rimette il processo in ready_queue
+ * 3. Ricarica il timer per il prossimo timeslice
+ * 4. Chiama lo scheduler
+ * 
+ * @param cpu_id ID della CPU dove è scattato l'interrupt
+ */
+static void handlePLT(int cpu_id) {
+    /* === 1. Verifica preliminare === */
+    if (cpu_id < 0 || cpu_id >= NCPU || !current_process[cpu_id] || !currentState) {
+        PANIC();
+    }
+
+    /* === 2. Salvataggio stato e tempi === */
+    updateProcessTime(cpu_id);  // Aggiorna p_time
+    current_process[cpu_id]->p_s = *currentState;
+
+    /* === 3. Reinserimento in ready_queue === */
+    ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+    insertProcQ(&ready_queue, current_process[cpu_id]);
+    current_process[cpu_id] = NULL;
+    RELEASE_LOCK((volatile unsigned int*)&global_lock);
+
+    /* === 4. Ricarica timer e schedulazione === */
+    setTIMER(TIMESLICE * (*(cpu_t *)TIMESCALEADDR));  // Scaling corretto
+    schedule();
+    __builtin_unreachable();
+}
+
    
    /* ------------------------------------------------------------------
       Gestione della linea‑2  (Interval Timer – Pseudo‑clock tick)
       ------------------------------------------------------------------ */
-   static void handleIntervalTimer(void)
-   {
-       /* 1. Ricarica l’Interval Timer con 100 ms */
-       LDIT(PSECOND);
-   
-       /* 2. Sveglia tutti i PCB bloccati sul semaforo pseudo‑clock */
-       pcb_PTR p;
-       while ((p = removeBlocked(&dev_semaph[NRSEMAPHORES-1])) != NULL) {
-           p->p_semAdd = NULL;
-           insertProcQ(&ready_queue, p); 
-           waiting_count--;
-       }
-       dev_semaph[NRSEMAPHORES-1] = 0;     /* reset semaforo */
-   }
+   /**
+ * Gestore dell'Interval Timer (Pseudo-clock a 100ms)
+ * 
+ * Comportamento:
+ * 1. Ricarica il timer per il prossimo tick
+ * 2. Sveglia tutti i processi bloccati sul semaforo pseudo-clock
+ * 3. Resetta il semaforo
+ */
+static void handleIntervalTimer(void) {
+    /* === 1. Ricarica il timer === */
+    LDIT(PSECOND * (*(cpu_t *)TIMESCALEADDR));  // Scaling corretto
+
+    /* === 2. Gestione processi bloccati === */
+    ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+    pcb_PTR p;
+    while ((p = removeBlocked(&dev_semaph[NRSEMAPHORES-1])) != NULL) {
+        if (p->p_semAdd != &dev_semaph[NRSEMAPHORES-1]) {
+            PANIC();  // PCB inconsistente
+        }
+        p->p_semAdd = NULL;
+        insertProcQ(&ready_queue, p);
+        waiting_count--;
+    }
+    
+    /* === 3. Reset sicuro del semaforo === */
+    dev_semaph[NRSEMAPHORES-1] = 0;
+    RELEASE_LOCK((volatile unsigned int*)&global_lock);
+}
 
 /**
-* Gestione dell'interrupt di un dispositivo specifico
-* @param line: linea di interrupt
-*/
-static void deviceHandler(int line)
-{
-    devregarea_t *devarea = (devregarea_t *)RAMBASEADDR;
-    unsigned int bitmap   = devarea->interrupt_dev[line - IL_DISK];
+ * Gestore degli interrupt di dispositivo (linee 3-7)
+ * 
+ * @param line Linea d'interrupt (IL_DISK=3, IL_FLASH=4, ..., IL_TERMINAL=7)
+ * 
+ * Comportamento:
+ * 1. Legge la mappa degli interrupt per la linea specificata
+ * 2. Per ogni dispositivo con interrupt pendente:
+ *    a) Gestisce priorità terminale (trasmissione > ricezione)
+ *    b) Invia ACK al dispositivo
+ *    c) Sblocca il PCB in attesa sul semaforo corrispondente
+ * 
+ * Strutture dati:
+ * - devregarea_t: Mappa dispositivi in RAMBASEADDR (0x10000000)
+ * - dev_semaph: Array di semafori (indice calcolato come line*8 + dev)
+ */
+static void deviceHandler(int line) {
+    /* === 1. Verifica preliminare === */
+    if (line < IL_DISK || line > IL_TERMINAL) {
+        PANIC(); // Linea interrupt non valida
+    }
 
-    /* scorri i device 0…7 della linea */
-    for (int dev = 0; dev < 8; dev++) { //NOTE 8 = 	Numero di sub‑device collegati a ciascuna linea d’interrupt 3‑7 (disk0‑7, flash0‑7, …).
-        if (!(bitmap & (1 << dev))) continue;          /* nessun interrupt */
+    /* === 2. Accesso alla mappa dispositivi === */
+    devregarea_t *devarea = (devregarea_t *)RAMBASEADDR;
+    unsigned int bitmap = devarea->interrupt_dev[line - IL_DISK];
+
+    /* === 3. Scansione dispositivi sulla linea === */
+    for (int dev = 0; dev < 8; dev++) {
+        if (!(bitmap & (1 << dev))) continue; // Ignora dispositivi senza interrupt
 
         devreg_t *d = &devarea->devreg[line - IL_DISK][dev];
         unsigned int status;
 
+        /* --- 3a. Gestione prioritaria per terminali --- */
         if (line == IL_TERMINAL) {
-            /* priorità: trasmissione > ricezione */
+            // Priorità trasmissione > ricezione
             if (d->term.transm_status & DEV0ON) {
                 status = d->term.transm_status;
                 d->term.transm_command = ACK;
             } else {
                 status = d->term.recv_status;
-                d->term.recv_command  = ACK;
+                d->term.recv_command = ACK;
             }
-        } else {                                       /* disk, flash, ecc. */
+        } 
+        /* --- 3b. Altri dispositivi (disk, flash, etc.) --- */
+        else {
             status = d->dtp.status;
             d->dtp.command = ACK;
         }
 
-        /* sblocca eventuale PCB in attesa su semaforo del device */
+        /* === 4. Sblocco PCB in attesa === */
         int semIndex = (line - IL_DISK) * 8 + dev;
         pcb_PTR p = removeBlocked(&dev_semaph[semIndex]);
+        
         if (p != NULL) {
-            p->p_semAdd     = NULL;
-            p->p_s.gpr[2]   = status;                  /* v0 <- status dev */
+            if (p->p_semAdd != &dev_semaph[semIndex]) {
+                PANIC(); // PCB inconsistente
+            }
+            p->p_semAdd = NULL;
+            p->p_s.gpr[2] = status; // Imposta stato dispositivo in v0
             waiting_count--;
+            
+            ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
             insertProcQ(&ready_queue, p);
+            RELEASE_LOCK((volatile unsigned int*)&global_lock);
         }
     }
 }
 
-  void interruptHandler(void)
-  {
-    int  cpu   = getPRID();
-    unsigned int cause = getCAUSE();          /* mcause */
 
-    /* ---------- Linea 1: PLT ---------- */
-    if (cause & LOCALTIMERINT) {
-        handlePLT(cpu);                       /* pre‑emzione  */
+
+void interruptHandler(void) { //NOTE -  ma serve il void nei parametri??
+    const int cpu = getPRID();
+    const unsigned int cause = getCAUSE();
+    
+    /* === 1. Verifica preliminare === */
+    if (cpu < 0 || cpu >= NCPU || !currentState) {
+        PANIC();
     }
 
-    /* ---------- Linea 2: Interval Timer / Pseudo‑clock ---------- */
-    if (cause & TIMERINTERRUPT) {
-        handleIntervalTimer();                /* tick 100 ms  */
+    /* === 2. Interrupt PLT (Priorità massima) === */
+    if ((cause & LOCALTIMERINT) && (cause & MIP_MTIP_MASK)) {
+        handlePLT(cpu); // Gestione pre-emption
+        return; // Non controllare altri interrupt dopo PLT
     }
 
-    /* ---------- Linee 3‑7: periferiche ---------- */
+    /* === 3. Interval Timer (Priorità media) === */
+    if ((cause & TIMERINTERRUPT) && (cause & MIP_MTIP_MASK)) {
+        handleIntervalTimer(); // Tick 100ms
+        return; // Non controllare periferiche dopo timer
+    }
+
+    /* === 4. Periferiche (Priorità bassa) === */
     for (int line = IL_DISK; line <= IL_TERMINAL; line++) {
-        if (CAUSE_IP_GET(cause, line)) {      /* bit IP(line) == 1 ? */
-            deviceHandler(line);              /* gestisci TUTTI i dev di quella linea */
+        if (CAUSE_IP_GET(cause, line)) {
+            // Patch: Lock per gestione atomica
+            ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+            deviceHandler(line); 
+            RELEASE_LOCK((volatile unsigned int*)&global_lock);
         }
     }
-  
-      /* al termine si ritorna al processo corrente (se esiste)
-         o lo scheduler ha già preso controllo dall’interno
-         di handlePLT / handleIntervalTimer / deviceHandler */
-  }
+}
   
