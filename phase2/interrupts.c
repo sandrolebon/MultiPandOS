@@ -11,7 +11,6 @@ extern int waiting_count;
 extern unsigned int *stateCauseReg;
 extern int dev_semaph[NRSEMAPHORES];
 extern int global_lock;
-extern void updateProcessTime(int cpu_id);
 extern void schedule();
 static void handlePLT(int cpu_id);
 static void handleIntervalTimer(void);
@@ -38,20 +37,10 @@ static void handlePLT(int cpu_id) {
         PANIC();
     }
 
-    /* === 2. Salvataggio stato e tempi === */
-    updateProcessTime(cpu_id);  // Aggiorna p_time
-    current_process[cpu_id]->p_s = *currentState;
-
-    /* === 3. Reinserimento in ready_queue === */
-    ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
+    current_process[cpu_id]->p_time += TIMESLICE;
     insertProcQ(&ready_queue, current_process[cpu_id]);
     current_process[cpu_id] = NULL;
-    RELEASE_LOCK((volatile unsigned int*)&global_lock);
-
-    /* === 4. Ricarica timer e schedulazione === */
-    setTIMER(TIMESLICE * (*(cpu_t *)TIMESCALEADDR));  // Scaling corretto
     schedule();
-    __builtin_unreachable();
 }
 
    

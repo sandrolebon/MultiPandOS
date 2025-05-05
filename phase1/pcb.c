@@ -36,6 +36,22 @@ void freePcb(pcb_t* p) {
     list_add_tail(&p->p_list, &pcbFree_h);
 }
 
+/**
+ * Controlla se il pcb è nella lista degli inutilizzati
+ * 
+ * @param p puntatore al pcb da cercare
+ * @return 1 se è nella lista free, 0 altrimenti
+ */
+int isInPCBFree_h(pcb_t *p) {
+    pcb_PTR iter;
+    list_for_each_entry(iter, &pcbFree_h, p_list) {
+        if(iter == p) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /*
     Rimuove dalla lista dei processi liberi un processo e lo inizializza con tutti i valori a NULL o a 0
 

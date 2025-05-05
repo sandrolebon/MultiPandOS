@@ -8,6 +8,7 @@
 void initPcbs();
 void *memcpy (void *dest, const void *, size_t );
 void freePcb(pcb_t* p);
+int isInPCBFree_h(pcb_t *p);
 pcb_t* allocPcb();
 void mkEmptyProcQ(struct list_head* head);
 int emptyProcQ(struct list_head* head);

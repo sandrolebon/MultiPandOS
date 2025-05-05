@@ -20,8 +20,52 @@ extern void interruptHandler(); //Gestisce gli interrupt hardware (timer, dispos
 static void syscallHandler(); //Gestisce le syscall (NSYS1-NSYS7)
 static void programTrapHandler(); //Gestisce errori software, istruzioni privilegiate
 void exceptionHandler(); //Riceve qualsiasi eccezione o interrupt; smista in base al tipo
-void terminateProcess(pcb_PTR proc);
+void destroyProcess(pcb_t *p);
+void terminateProgeny(pcb_t *p);
 void passUpOrDie(int exceptionType, int cpu_id); //Passa l'eccezione al processo padre o termina il processo corrente
+int isInPCBFree_h(pcb_t *p);
+extern int debug;
+
+void terminateProcess(pcb_t *p) {
+    outChild(p);
+    terminateProgeny(p);
+    destroyProcess(p);
+  }
+  
+  /**
+   * Elimina tutti i processi figli di p
+   * 
+   * @param p processo di cui eliminare i figli
+   */
+  void terminateProgeny(pcb_t *p) {
+    while (!emptyChild(p)) {
+      // rimuove il primo figlio
+      pcb_t *child = removeChild(p);
+      // se è stato rimosso con successo, elimina ricorsivamente i suoi figli
+      if (child != NULL) {
+        terminateProgeny(child);
+        // dopo aver eliminato i figli, distrugge il processo
+        destroyProcess(child);
+      }
+    }
+  }
+  
+  /**
+   * Elimina il processo p dal sistema e lo ripone nella lista dei free pcb
+   * 
+   * @param p processo da rimuovere dalle code
+   */
+  void destroyProcess(pcb_t *p) {
+    if (!isInPCBFree_h(p)) {
+      // lo cerco nella ready queue
+      if (outProcQ(&ready_queue, p) == NULL) {
+        // se non è nella ready lo cerco tra i bloccati per lo pseudoclock
+        waiting_count--;
+      }
+      freePcb(p);
+      process_count--;
+    }
+  }
 
 /**
  * Passa la gestione dell'eccezione al Support Level o termina il processo
@@ -34,82 +78,24 @@ void passUpOrDie(int exceptionType, int cpu_id) {
         PANIC(); // Stato o processo non validi
     }
 
-    /* === 2. Controllo bounds exceptionType === */
-    if (exceptionType != PGFAULTEXCEPT && exceptionType != GENERALEXCEPT) {
-        exceptionType = GENERALEXCEPT; // Fallback sicuro
+    // Pass up
+    if(current_process[cpu_id]->p_supportStruct != NULL) {
+        unsigned int stackPtr, status, progCounter;
+        stackPtr = current_process[cpu_id]->p_supportStruct->sup_exceptContext[exceptionType].stackPtr;
+        status = current_process[cpu_id]->p_supportStruct->sup_exceptContext[exceptionType].status;
+        progCounter = current_process[cpu_id]->p_supportStruct->sup_exceptContext[exceptionType].pc;
+
+        LDCXT(stackPtr, status, progCounter);
     }
-
-    pcb_PTR proc = current_process[cpu_id];
-    
-    /* === 3. Pass-up al Support Level (se disponibile) === */
-    if (proc->p_supportStruct != NULL) {
-        support_t *support = proc->p_supportStruct;
-        
-        /* --- Copia atomica dello stato --- */
-        memcpy(&support->sup_exceptState[exceptionType], 
-               currentState, 
-               sizeof(state_t));
-        
-        /* --- Controllo integrità contesto --- */
-        if (!support->sup_exceptContext[exceptionType].pc ||
-            !support->sup_exceptContext[exceptionType].stackPtr) {
-            PANIC(); // Contesto corrotto
-        }
-
-        /* --- Switch al Support Level --- */
-        LDCXT(
-            support->sup_exceptContext[exceptionType].stackPtr,
-            support->sup_exceptContext[exceptionType].status,
-            support->sup_exceptContext[exceptionType].pc
-        );
-        __builtin_unreachable(); //NOTE -  solito discorso: un po too much?
-    } 
-    /* === 4. Terminazione processo (die) === */
+    // Or die
     else {
-        ACQUIRE_LOCK((volatile unsigned int*)&global_lock);
-        terminateProcess(proc);
-        RELEASE_LOCK((volatile unsigned int*)&global_lock);
-        
+        terminateProcess(current_process[cpu_id]);
+        current_process[cpu_id] = NULL;
         schedule();
-        __builtin_unreachable();
     }
 }
 
-/* --------------------------------------------------------------------
-   Aggiorna p_time del processo che sta girando sulla CPU indicata
-   usando gpr[5] --> p_s_time   (vedi discussione precedente)
-   ------------------------------------------------------------------ */
-/**
- * Aggiorna il tempo CPU accumulato dal processo in esecuzione
- * 
- * @param cpu_id ID della CPU dove è in esecuzione il processo
- * 
- * Comportamento:
- * 1. Legge il timer di sistema (TOD)
- * 2. Calcola il tempo trascorso dall'inizio del timeslice
- * 3. Aggiorna p_time nel PCB
- * 
- * Note:
- * - Usa gpr[5] (t0) come storage temporaneo per il tempo di inizio
- * - Safe da chiamare anche senza processo corrente (no-op)
- */
-void updateProcessTime(int cpu_id) {
-    cpu_t now; 
-    STCK(now);  // Legge il Time-Of-Day clock
-    
-    if (current_process[cpu_id] == NULL) {
-        return;  // Nessun processo in esecuzione
-    }
-    
-    pcb_PTR p = current_process[cpu_id];
-    cpu_t start_time = p->p_s.gpr[5];  // Tempo di inizio salvato in t0
-    
-    // Calcola e aggiorna il tempo CPU (in microsecondi)
-    p->p_time += (now - start_time);
-    
-    // Aggiorna il tempo di inizio per il prossimo ciclo
-    p->p_s.gpr[5] = now;
-}
+
 
 /**
  * System Call Handler - Gestisce tutte le syscall del kernel
@@ -340,9 +326,6 @@ static void programTrapHandler() {
         PANIC();  // Caso anomalo: trap senza processo corrente
     }
 
-    /* 2. Aggiornamento tempo CPU prima della terminazione */
-    updateProcessTime(cpu_id);
-
     /* 3. Terminazione del processo (e di tutta la sua discendenza) */
     ACQUIRE_LOCK((volatile unsigned int*)&global_lock);  // Protegge ready_queue, process_count, etc.
     terminateProcess(current_process[cpu_id]);
@@ -372,95 +355,86 @@ static void programTrapHandler() {
  * - Deve essere chiamato con il global_lock acquisito
  * - Gestisce sia processi running che bloccati/ready
  */
-void terminateProcess(pcb_PTR proc) {
-    const int cpu_id = getPRID();
+// void terminateProcess(pcb_PTR proc) {
+//     const int cpu_id = getPRID();
     
-    /* === 1. Verifiche di sicurezza === */
-    if (proc == NULL || proc->p_list.next == NULL) {
-        PANIC(); // PCB corrotto o già deallocato
-    }
+//     /* === 1. Verifiche di sicurezza === */
+//     if (proc == NULL || proc->p_list.next == NULL) {
+//         PANIC(); // PCB corrotto o già deallocato
+//     }
 
-    /* === 2. Terminazione ricorsiva figli === */
-    while (!list_empty(&proc->p_child)) {
-        pcb_PTR figlio = container_of(proc->p_child.next, pcb_t, p_list);
-        terminateProcess(figlio); // Lock già acquisito
-    }
+//     /* === 2. Terminazione ricorsiva figli === */
+//     while (!list_empty(&proc->p_child)) {
+//         pcb_PTR figlio = container_of(proc->p_child.next, pcb_t, p_list);
+//         terminateProcess(figlio); // Lock già acquisito
+//     }
 
-    /* === 3. Rimozione da strutture kernel (atomica) === */
-    if (proc->p_semAdd != NULL) {
-        /* --- Caso bloccato su semaforo --- */
-        pcb_PTR rimosso = outBlocked(proc);
-        if (rimosso) {
-            // Patch: Macro per identificare tipo semaforo
-            #define IS_DEV_SEM(sem) \
-                ((sem) >= &dev_semaph[0] && (sem) <= &dev_semaph[NRSEMAPHORES-1])
+//     /* === 3. Rimozione da strutture kernel (atomica) === */
+//     if (proc->p_semAdd != NULL) {
+//         /* --- Caso bloccato su semaforo --- */
+//         pcb_PTR rimosso = outBlocked(proc);
+//         if (rimosso) {
+//             // Patch: Macro per identificare tipo semaforo
+//             #define IS_DEV_SEM(sem)
+//                 ((sem) >= &dev_semaph[0] && (sem) <= &dev_semaph[NRSEMAPHORES-1])
             
-            if (IS_DEV_SEM(proc->p_semAdd)) {
-                waiting_count--; // Semaforo dispositivo
-            } else {
-                (*(proc->p_semAdd))++; // Operazione V atomica
-            }
-        }
-    } else if (!list_empty(&proc->p_list)) {
-        /* --- Caso ready --- */
-        outProcQ(&ready_queue, proc);
-    }
+//             if (IS_DEV_SEM(proc->p_semAdd)) {
+//                 waiting_count--; // Semaforo dispositivo
+//             } else {
+//                 (*(proc->p_semAdd))++; // Operazione V atomica
+//             }
+//         }
+//     } else if (!list_empty(&proc->p_list)) {
+//         /* --- Caso ready --- */
+//         outProcQ(&ready_queue, proc);
+//     }
 
-    /* === 4. Pulizia stato processo === */
-    if (proc == current_process[cpu_id]) {
-        current_process[cpu_id] = NULL;
-        // Patch: Aggiorna tempo CPU prima della rimozione
-        updateProcessTime(cpu_id);
-    }
+//     /* === 4. Pulizia stato processo === */
+//     if (proc == current_process[cpu_id]) {
+//         current_process[cpu_id] = NULL;
+//         // Patch: Aggiorna tempo CPU prima della rimozione
+//         updateProcessTime(cpu_id);
+//     }
 
-    /* === 5. Aggiornamento contatori globali === */
-    process_count--; // Atomico (lock già acquisito)
+//     /* === 5. Aggiornamento contatori globali === */
+//     process_count--; // Atomico (lock già acquisito)
 
-    /* === 6. Deallocazione sicura === */
-    memset(proc, 0, sizeof(pcb_t)); // Azzera memoria per sicurezza
-    freePcb(proc);
-}
+//     /* === 6. Deallocazione sicura === */
+//     memset(proc, 0, sizeof(pcb_t)); // Azzera memoria per sicurezza
+//     freePcb(proc);
+// }
 
 
 /**
  * Main exception dispatcher - Corrected version with non-overlapping cases
  */
-void exceptionHandler() {
+void exceptionHandler() { //TODO - ma ci sta dichiarare così la roba? Che cazzo ho scritto?
     const int cpu_id = getPRID();
-    const unsigned int cause = getCAUSE();
-    const bool is_interrupt = (cause >> 31) & 0x1;
-    const unsigned int exc_code = cause & 0x1F;
-    const bool user_mode = (currentState->status & MSTATUS_MPP_MASK) == MSTATUS_MPP_U;
-
-    /* --- SYSCALL exception (code 8) --- */
-    if (!is_interrupt && exc_code == 8) {
-        const int syscall_num = (int)currentState->gpr[24];  // a0
-        if (user_mode && syscall_num < 0) {
-            currentState->cause = PRIVINSTR;
-            programTrapHandler(cpu_id);
-            return;
-        }
-        syscallHandler();
-        return;
-    }
-
-    /* --- Non-overlapping exception routing --- */
-    if (is_interrupt) {
-        // All hardware interrupts (codes 1-23 with high bit set)
-        interruptHandler();
-    } else {
-        switch(exc_code) {
-            /* TLB Exceptions (24-28) */
-            case 24 ... 28:
+        switch((getCAUSE() & GETEXECCODE) >> CAUSESHIFT) {
+            case IOINTERRUPTS:
+                // External Device Interrupt
+                interruptHandler();
+                break;
+            case 1 ... 3:
+                // TLB Exception
+                // uTLB_RefillHandler();
                 passUpOrDie(PGFAULTEXCEPT, cpu_id);
                 break;
-                
-            /* Program Traps */
-            case 0 ... 7:    // Address/Bus errors
-            case 9 ... 12:   // Breakpoints/illegal instructions
-            default:
+            case 4 ... 7:
+                // Program Traps p1: Address and Bus Error Exception
+                passUpOrDie(GENERALEXCEPT, cpu_id);
+                break;
+            case SYSEXCEPTION: 
+                // Syscalls
+                syscallHandler();
+                break;
+            case 9 ... 12:
+                // Breakpoint Calls, Program Traps p2
+                passUpOrDie(GENERALEXCEPT, cpu_id);
+                break;
+            default: 
+                // Wrong ExcCode
                 passUpOrDie(GENERALEXCEPT, cpu_id);
                 break;
         }
-    }
 }

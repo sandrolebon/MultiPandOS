@@ -24,89 +24,111 @@ passupvector_t* passupvector;
 struct list_head pseudoclock_blocked_list;
 state_t *currentState; //punta alla struttura che contiene lo stato del processore salvato al momento di un'eccezione o interrupt
 unsigned int *stateCauseReg; //puntatore diretto al campo cause all'interno di quella struttura di stato, permettendo un accesso rapido al codice che identifica l'evento
-
-
+int debug = 0;
 void *memset (void *dest, register int val, register size_t len)
 {
-  register unsigned char *ptr = (unsigned char*)dest;
-  while (len-- > 0)
+    register unsigned char *ptr = (unsigned char*)dest;
+    while (len-- > 0)
     *ptr++ = val;
-  return dest;
+    return dest;
 }
 //entry point del sistema operativo
 void main() {
-    // 1. Inizializzazione strutture dati
-    initPcbs();
-    initASL();
+    /* --- 1. Inizializzazione Strutture Dati Base --- */
+    initPcbs(); // Prepara la lista pcbFree_h
+    initASL();  // Prepara la lista semdFree_h
 
-    // 2. Inizializzazione variabili globali
+    /* --- 2. Inizializzazione Variabili Globali --- */
     process_count = 0;
     waiting_count = 0;
-    global_lock = 0;
+    global_lock = 0; // Assicurati che il tipo sia corretto (unsigned)
     mkEmptyProcQ(&ready_queue);
-    currentState = (state_t *)BIOSDATAPAGE;
-    stateCauseReg = &currentState->cause;
-    // 3. Inizializzazione Pass-Up Vector per tutte le CPU
-    passupvector = (passupvector_t *) PASSUPVECTOR;
+    currentState = (state_t *)BIOSDATAPAGE; // Puntatore allo stato salvato dal BIOS
+    // stateCauseReg = &currentState->cause; // Inizializzazione non strettamente necessaria qui
+
+    /* --- 3. Inizializzazione Pass-Up Vector (MANTENUTO COME RICHIESTO) --- */
+    // NOTA: Questo loop sovrascrive lo stesso PassUpVector base (PASSUPVECTOR)
+    // per ogni CPU. Se NCPU > 1, questo potrebbe essere un problema.
+    // La versione corretta userebbe:
+    // passupvector_t *cpu_passup = (passupvector_t *)(PASSUPVECTOR + cpu_id * sizeof(passupvector_t));
+    passupvector_t* passupvector = (passupvector_t *) PASSUPVECTOR;
     // Pass Up Vector for CPU 0
     passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
     passupvector->exception_handler = (memaddr) exceptionHandler;
     passupvector->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
     passupvector->exception_stackPtr = (memaddr) KERNELSTACK;
-   
-  
-  
-   
-  
-    // Pass Up Vector for CPU >=1
-   for(int cpu_id = 0; cpu_id < NCPU; cpu_id++){
+    // Pass Up Vector for CPU >=1 (Logica attuale)
+    for(int cpu_id = 1; cpu_id < NCPU; cpu_id++){ // Parte da 1 per non sovrascrivere CPU0
+      // NOTA: Sta ancora scrivendo su passupvector base, non sull'offset corretto
       passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
       passupvector->exception_handler = (memaddr) exceptionHandler;
+      // Gli stack pointer sembrano corretti per le CPU >= 1
       passupvector->tlb_refill_stackPtr = (memaddr) RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
-      passupvector->exception_stackPtr = (memaddr) 0x20020000 + (cpu_id * PAGESIZE);    
+      passupvector->exception_stackPtr = (memaddr) 0x20020000 + (cpu_id * PAGESIZE);
     }
 
-    // 4. Configurazione IRT (Interrupt Routing Table)
+    
+    
+    /* --- 4. Configurazione IRT (Interrupt Routing Table) --- */
+    // Assicurati che IRT_START sia un indirizzo valido e scrivibile
     for (int i = 0; i < IRT_NUM_ENTRY; i++) {
-        int cpu_id = i / (IRT_NUM_ENTRY / NCPU); // 6 entry per CPU
-        unsigned int dest = 1 << cpu_id;
-        *((unsigned int*)(IRT_START + i*4)) = IRT_RP_BIT_ON | dest;
+        int cpu_id_target = i / (IRT_NUM_ENTRY / NCPU); // Assegna 6 entry per CPU
+        unsigned int dest_mask = 1 << cpu_id_target;
+        // Scrittura nel registro IRT
+        *((volatile unsigned int*)(IRT_START + i*4)) = IRT_RP_BIT_ON | dest_mask;
     }
-
-    // 5. Inizializzazione timer di sistema
-    LDIT(PSECOND * (*(cpu_t *)TIMESCALEADDR));
-
-    // 6. Creazione processo iniziale (test)
+    
+    /* --- 5. Inizializzazione Interval Timer --- */
+    // ATTENZIONE: Verifica che TIMESCALEADDR sia valido prima di dereferenziare
+    // Se l'hardware non è pronto, questo può causare un crash.
+    // Considera un check preliminare se possibile.
+    cpu_t timescale = (*(volatile cpu_t *)TIMESCALEADDR);
+    if (timescale == 0) PANIC(); // Evita divisione per zero o valore non valido
+    LDIT(PSECOND * timescale);
+    
+    /* --- 6. Creazione Processo Iniziale (test) --- */
     pcb_PTR initial_pcb = allocPcb();
-    if (!initial_pcb) PANIC(); // Fallimento allocazione
+    if (!initial_pcb) {
+        PANIC(); // Fallimento critico: non ci sono PCB disponibili
+    }
+    ACQUIRE_LOCK((volatile unsigned int*)&global_lock); // Proteggi accesso alla coda
+    /* Dichiarazione del processo da iniziare e inizializzazione */
+    insertProcQ(&(ready_queue), initial_pcb);
     
-    // Inizializzazione stato del processo
-    initial_pcb->p_s.mie = MIE_ALL;
-    initial_pcb->p_s.status = MSTATUS_MPIE_MASK | MSTATUS_MPP_M;
-    RAMTOP(initial_pcb->p_s.reg_sp);
-    initial_pcb->p_s.pc_epc = (memaddr)test;
+    /* processor Local Timer abilitato, Kernel-mode on, Interrupts Abilitati */
+    (initial_pcb->p_s).status = TEBITON | IEPON | IMON;
     
-    // Inizializzazione altri campi PCB
-    initial_pcb->p_time = 0;
-    initial_pcb->p_semAdd = NULL;
-    initial_pcb->p_supportStruct = NULL;
-    
-    // Inserimento in ready queue
-    insertProcQ(&ready_queue, initial_pcb);
+    /* Inizializzazione sp */
+    RAMTOP((initial_pcb->p_s).reg_sp);
+
+    (initial_pcb->p_s).pc_epc = (memaddr) test; 
+    (initial_pcb->p_s).gpr[24] = (memaddr) test; 
+
+    /* Nuovo processo "iniziato" */
     process_count++;
 
-    // 7. Inizializzazione altri processori
+    RELEASE_LOCK((volatile unsigned int*)&global_lock);
+    
+    /**/ //NOTE - Riabilitare per test CPU>1
+    /**--- 7. Inizializ/ zazione Altri Processori (se NCPU > 1) --- */
     for (int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
-        state_t cpu_state;
-        memset(&cpu_state, 0, sizeof(state_t));
+            state_t cpu_state;
+            memset(&cpu_state, 0, sizeof(state_t)); // Azzera stato CPU
         
-        cpu_state.status = MSTATUS_MPP_M;
-        cpu_state.pc_epc = (memaddr)schedule;
-        cpu_state.reg_sp = 0x20020000 + (cpu_id * PAGESIZE);
+            cpu_state.status = MSTATUS_MPP_M; // Kernel mode
+            cpu_state.pc_epc = (memaddr)schedule; // Punto di ingresso: lo scheduler
+            // ATTENZIONE: Verifica che questo indirizzo stack sia valido e non si sovrapponga
+            cpu_state.reg_sp = 0x20020000 + (cpu_id * PAGESIZE);
         
-        INITCPU(cpu_id, &cpu_state);
-    }
+            // Avvia la CPU aggiuntiva
+            // ATTENZIONE: INITCPU potrebbe fallire se lo stato o l'indirizzo sono invalidi
+            INITCPU(cpu_id, &cpu_state); 
+        }
+        
+        
+        /* --- 8. Avvio Scheduler sulla CPU 0 --- */
+        schedule(); // Non dovrebbe mai ritornare
 
-    // 8. Avvio scheduler
-    schedule();
+    // Se arriva qui, qualcosa è andato storto nello scheduler
+    PANIC();
 }
