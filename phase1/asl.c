@@ -60,19 +60,16 @@ pcb_t* removeBlocked(int* semAdd) {
     semd_t* tmp;
     list_for_each_entry(tmp, &semd_h, s_link) {
         if (tmp->s_key == semAdd) {
+            pcb_t* p = container_of(tmp->s_procq.next, pcb_t, p_list);
+            list_del(&tmp->s_procq);
             if (list_empty(&tmp->s_procq)) {
                 list_del(&tmp->s_link);
                 list_add(tmp->s_link.prev->next, &semdFree_h);
-                return NULL;
-            } else {
-                pcb_t* p = container_of(tmp->s_procq.next, pcb_t, p_list);
-                list_del(&tmp->s_procq);
-                return p;
             }
+            return p;
         }
     }
     return NULL;
-
 }
 
 /*
