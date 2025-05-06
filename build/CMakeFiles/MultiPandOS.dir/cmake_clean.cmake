@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/MultiPandOS.dir/klog.c.o"
+  "CMakeFiles/MultiPandOS.dir/klog.c.o.d"
   "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o"
   "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o.d"
   "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o"

@@ -99,15 +99,6 @@ void passUpOrDie(int exceptionType, int cpu_id) {
 
 /**
  * System Call Handler - Gestisce tutte le syscall del kernel
- * 
- * Patch applicate:
- * 1. Controllo stato processo NULL
- * 2. Locking migliorato per operazioni atomiche
- * 3. Gestione errori estesa
- * 4. Ottimizzazione accessi a memoria
- */
-/**
- * System Call Handler - Conforme alle specifiche Phase 2
  * Gestisce tutte le syscall obbligatorie (NSYS1-NSYS9)
  */
 static void syscallHandler() {
@@ -319,7 +310,7 @@ static void syscallHandler() {
  * - Non ritorna al chiamante (transizione a schedule())
  */
 static void programTrapHandler() {
-    const int cpu_id = getPRID();
+    int cpu_id = getPRID();
     
     /* 1. Controllo di sicurezza (non dovrebbe mai fallire) */
     if (current_process[cpu_id] == NULL) {
@@ -409,7 +400,7 @@ static void programTrapHandler() {
  * Main exception dispatcher - Corrected version with non-overlapping cases
  */
 void exceptionHandler() { //TODO - ma ci sta dichiarare così la roba? Che cazzo ho scritto?
-    const int cpu_id = getPRID();
+    int cpu_id = getPRID();
         switch((getCAUSE() & GETEXECCODE) >> CAUSESHIFT) {
             case IOINTERRUPTS:
                 // External Device Interrupt

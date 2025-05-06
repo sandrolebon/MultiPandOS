@@ -142,6 +142,30 @@ MultiPandOSuRISCV/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOSuRISCV.dir/build.make CMakeFiles/MultiPandOSuRISCV.dir/build
 .PHONY : MultiPandOSuRISCV/fast
 
+klog.o: klog.c.o
+.PHONY : klog.o
+
+# target to build an object file
+klog.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOS.dir/build.make CMakeFiles/MultiPandOS.dir/klog.c.o
+.PHONY : klog.c.o
+
+klog.i: klog.c.i
+.PHONY : klog.i
+
+# target to preprocess a source file
+klog.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOS.dir/build.make CMakeFiles/MultiPandOS.dir/klog.c.i
+.PHONY : klog.c.i
+
+klog.s: klog.c.s
+.PHONY : klog.s
+
+# target to generate assembly for a file
+klog.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/MultiPandOS.dir/build.make CMakeFiles/MultiPandOS.dir/klog.c.s
+.PHONY : klog.c.s
+
 phase1/asl.o: phase1/asl.c.o
 .PHONY : phase1/asl.o
 
@@ -336,6 +360,9 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... MultiPandOSuRISCV"
 	@echo "... MultiPandOS"
+	@echo "... klog.o"
+	@echo "... klog.i"
+	@echo "... klog.s"
 	@echo "... phase1/asl.o"
 	@echo "... phase1/asl.i"
 	@echo "... phase1/asl.s"

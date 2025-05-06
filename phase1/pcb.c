@@ -72,6 +72,7 @@ pcb_t* allocPcb() {
         }
         INIT_LIST_HEAD(&tmp->p_list);
         INIT_LIST_HEAD(&tmp->p_child);
+        INIT_LIST_HEAD((struct list_head *)tmp->p_parent);
         INIT_LIST_HEAD(&tmp->p_sib);
         tmp->p_s.cause = 0;
         tmp->p_s.status = ALLOFF;
@@ -80,9 +81,10 @@ pcb_t* allocPcb() {
             tmp->p_s.gpr[i] = 0;
         }
         tmp->p_s.mie = 0;
-        tmp->p_s.pc_epc = 0;
+        tmp->p_s.pc_epc = (memaddr) test;
         tmp->p_parent = NULL;
         tmp->p_time = 0;
+        tmp->p_semAdd = NULL;
         tmp->p_supportStruct = NULL;
         tmp->p_pid = next_pid;
         next_pid++;

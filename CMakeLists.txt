@@ -15,7 +15,7 @@ add_compile_options(-ffreestanding -static -nostartfiles -nostdlib -I${URISCV_IN
 
 set(CMAKE_EXE_LINKER_FLAGS "-G 0 -nostdlib -T ${URISCV_SRC}/uriscvcore.ldscript -march=rv32imfd -melf32lriscv")
 
-add_executable(MultiPandOS phase2/p2test.c phase2/initial.c phase2/exceptions.c phase2/interrupts.c phase2/scheduler.c phase1/pcb.c phase1/asl.c ${URISCV_SRC}/crtso.S ${URISCV_SRC}/liburiscv.S)
+add_executable(MultiPandOS klog.c phase2/p2test.c phase2/initial.c phase2/exceptions.c phase2/interrupts.c phase2/scheduler.c phase1/pcb.c phase1/asl.c ${URISCV_SRC}/crtso.S ${URISCV_SRC}/liburiscv.S)
 
 add_custom_target(
 	MultiPandOSuRISCV ALL

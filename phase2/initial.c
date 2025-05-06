@@ -14,6 +14,7 @@ extern void exceptionHandler();
 //NOTE - funzione punto di partenza per il primo processo creato durante inizializzazione del sistema
 extern void test(); //pare che questa cosa dell'extern serva per rendere la funzione visibile al linker
 extern void schedule(); //TODO - uguale a sotto zioponi
+extern void klog_print(char *str);
 int dev_semaph[NRSEMAPHORES]; //con questo array gestisco i Device Semaphores
 int process_count;  // number of processes started but not yet terminated
 int waiting_count; // number of soft-blocked processes 
@@ -34,43 +35,67 @@ void *memset (void *dest, register int val, register size_t len)
 }
 //entry point del sistema operativo
 void main() {
+    /* --- 2. Inizializzazione Variabili Globali --- */
+    currentState = (state_t *)BIOSDATAPAGE; // Puntatore allo stato salvato dal BIOS
+    // stateCauseReg = &currentState->cause; // Inizializzazione non strettamente necessaria qui
+    
+    /* --- 3. Inizializzazione Pass-Up Vector per TUTTE le CPU --- */
+    // Imposta gli Stack Pointer DEDICATI per ciascuna CPU
+    // CPU 0 usa lo stack kernel principale
+    passupvector_t *cpu_puv = (passupvector_t *)(PASSUPVECTOR);
+    cpu_puv->tlb_refill_stackPtr = (memaddr)KERNELSTACK;
+    cpu_puv->exception_stackPtr = (memaddr)KERNELSTACK; 
+    // Imposta gli handler (puntano alle stesse funzioni per tutte le CPU in Phase 2)
+    cpu_puv->tlb_refill_handler = (memaddr)uTLB_RefillHandler; // Handler TLB (placeholder)
+    cpu_puv->exception_handler = (memaddr)exceptionHandler;  // Handler eccezioni generale
+    
+    for(int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
+        cpu_puv = (passupvector_t *)(PASSUPVECTOR + cpu_id * sizeof(passupvector_t));
+        // Stack per TLB Refill Handler (CPU >= 1)
+        // Es: RAMSTART + 64 pagine + offset per CPU
+        cpu_puv->tlb_refill_stackPtr = (memaddr)(RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE));
+        
+        // Stack per Exception Handler (CPU >= 1)
+        // Es: Indirizzo base 0x20020000 + offset per CPU
+        cpu_puv->exception_stackPtr = (memaddr)(0x20020000 + (cpu_id * PAGESIZE));
+    }
+    
     /* --- 1. Inizializzazione Strutture Dati Base --- */
     initPcbs(); // Prepara la lista pcbFree_h
     initASL();  // Prepara la lista semdFree_h
-
-    /* --- 2. Inizializzazione Variabili Globali --- */
+    
+    //inizializzo variabili globali
     process_count = 0;
     waiting_count = 0;
-    global_lock = 0; // Assicurati che il tipo sia corretto (unsigned)
+    global_lock = 0;
     mkEmptyProcQ(&ready_queue);
-    currentState = (state_t *)BIOSDATAPAGE; // Puntatore allo stato salvato dal BIOS
-    // stateCauseReg = &currentState->cause; // Inizializzazione non strettamente necessaria qui
-
-    /* --- 3. Inizializzazione Pass-Up Vector (MANTENUTO COME RICHIESTO) --- */
-    // NOTA: Questo loop sovrascrive lo stesso PassUpVector base (PASSUPVECTOR)
-    // per ogni CPU. Se NCPU > 1, questo potrebbe essere un problema.
-    // La versione corretta userebbe:
-    // passupvector_t *cpu_passup = (passupvector_t *)(PASSUPVECTOR + cpu_id * sizeof(passupvector_t));
-    passupvector_t* passupvector = (passupvector_t *) PASSUPVECTOR;
-    // Pass Up Vector for CPU 0
-    passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-    passupvector->exception_handler = (memaddr) exceptionHandler;
-    passupvector->tlb_refill_stackPtr = (memaddr) KERNELSTACK;
-    passupvector->exception_stackPtr = (memaddr) KERNELSTACK;
-    // Pass Up Vector for CPU >=1 (Logica attuale)
-    for(int cpu_id = 1; cpu_id < NCPU; cpu_id++){ // Parte da 1 per non sovrascrivere CPU0
-      // NOTA: Sta ancora scrivendo su passupvector base, non sull'offset corretto
-      passupvector->tlb_refill_handler = (memaddr) uTLB_RefillHandler;
-      passupvector->exception_handler = (memaddr) exceptionHandler;
-      // Gli stack pointer sembrano corretti per le CPU >= 1
-      passupvector->tlb_refill_stackPtr = (memaddr) RAMSTART + (64 * PAGESIZE) + (cpu_id * PAGESIZE);
-      passupvector->exception_stackPtr = (memaddr) 0x20020000 + (cpu_id * PAGESIZE);
+    for(int i = 0; i < NCPU; i++) {
+        current_process[i] = NULL;
     }
-
+    /*Dispositivi Standard (Disk, Flash, Network, Printer): 4 linee * 8 dispositivi/linea = 32 semafori.
+    Terminali (con 2 sub-device, TX/RX): 1 linea * 8 dispositivi/linea * 2 sub-device/dispositivo = 16 semafori.
+    Pseudo-clock: 1 semaforo aggiuntivo.*/
+    for(int i = 0; i < NRSEMAPHORES; i++) {
+        dev_semaph[i] = 0;
+    }
     
+    /* --- 5. Inizializzazione Interval Timer, carico con 100ms --- */
+    LDIT(PSECOND);
+    
+    /* --- 6. Creazione Processo Iniziale (test) --- */
+    pcb_PTR initial_pcb = allocPcb();
+    ACQUIRE_LOCK((volatile unsigned int*)&global_lock); // Proteggi accesso alla coda
+    (initial_pcb->p_s).status = MIE_ALL | MSTATUS_MPIE_MASK | MSTATUS_MPP_M;   /* processor Local Timer abilitato, Kernel-mode on, Interrupts Abilitati */
+    RAMTOP((initial_pcb->p_s).reg_sp);     /* Inizializzazione stack pointer */
+    (initial_pcb->p_s).pc_epc = (memaddr) test; 
+    (initial_pcb->p_s).gpr[24] = (memaddr) test; 
+    /* Nuovo processo "iniziato" */
+    insertProcQ(&(ready_queue), initial_pcb);
+    process_count++;
+    RELEASE_LOCK((volatile unsigned int*)&global_lock);
     
     /* --- 4. Configurazione IRT (Interrupt Routing Table) --- */
-    // Assicurati che IRT_START sia un indirizzo valido e scrivibile
+    // Assicurati che IRT_START sia un indirizzo valido e scrivibile //FIXME - dio stramerda doppio for? Vedi sium
     for (int i = 0; i < IRT_NUM_ENTRY; i++) {
         int cpu_id_target = i / (IRT_NUM_ENTRY / NCPU); // Assegna 6 entry per CPU
         unsigned int dest_mask = 1 << cpu_id_target;
@@ -78,54 +103,17 @@ void main() {
         *((volatile unsigned int*)(IRT_START + i*4)) = IRT_RP_BIT_ON | dest_mask;
     }
     
-    /* --- 5. Inizializzazione Interval Timer --- */
-    // ATTENZIONE: Verifica che TIMESCALEADDR sia valido prima di dereferenziare
-    // Se l'hardware non è pronto, questo può causare un crash.
-    // Considera un check preliminare se possibile.
-    cpu_t timescale = (*(volatile cpu_t *)TIMESCALEADDR);
-    if (timescale == 0) PANIC(); // Evita divisione per zero o valore non valido
-    LDIT(PSECOND * timescale);
-    
-    /* --- 6. Creazione Processo Iniziale (test) --- */
-    pcb_PTR initial_pcb = allocPcb();
-    if (!initial_pcb) {
-        PANIC(); // Fallimento critico: non ci sono PCB disponibili
-    }
-    ACQUIRE_LOCK((volatile unsigned int*)&global_lock); // Proteggi accesso alla coda
-    /* Dichiarazione del processo da iniziare e inizializzazione */
-    insertProcQ(&(ready_queue), initial_pcb);
-    
-    /* processor Local Timer abilitato, Kernel-mode on, Interrupts Abilitati */
-    (initial_pcb->p_s).status = TEBITON | IEPON | IMON;
-    
-    /* Inizializzazione sp */
-    RAMTOP((initial_pcb->p_s).reg_sp);
-
-    (initial_pcb->p_s).pc_epc = (memaddr) test; 
-    (initial_pcb->p_s).gpr[24] = (memaddr) test; 
-
-    /* Nuovo processo "iniziato" */
-    process_count++;
-
-    RELEASE_LOCK((volatile unsigned int*)&global_lock);
-    
-    /**/ //NOTE - Riabilitare per test CPU>1
-    /**--- 7. Inizializ/ zazione Altri Processori (se NCPU > 1) --- */
+    //FIXME - INITCPU e cazzi cpu state
+    /**--- 7. Inizializzazione Altri Processori (se NCPU > 1) --- */
     for (int cpu_id = 1; cpu_id < NCPU; cpu_id++) {
             state_t cpu_state;
             memset(&cpu_state, 0, sizeof(state_t)); // Azzera stato CPU
-        
             cpu_state.status = MSTATUS_MPP_M; // Kernel mode
             cpu_state.pc_epc = (memaddr)schedule; // Punto di ingresso: lo scheduler
             // ATTENZIONE: Verifica che questo indirizzo stack sia valido e non si sovrapponga
             cpu_state.reg_sp = 0x20020000 + (cpu_id * PAGESIZE);
-        
-            // Avvia la CPU aggiuntiva
-            // ATTENZIONE: INITCPU potrebbe fallire se lo stato o l'indirizzo sono invalidi
-            INITCPU(cpu_id, &cpu_state); 
+            INITCPU(cpu_id, &cpu_state);    
         }
-        
-        
         /* --- 8. Avvio Scheduler sulla CPU 0 --- */
         schedule(); // Non dovrebbe mai ritornare
 

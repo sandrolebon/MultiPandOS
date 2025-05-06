@@ -10,6 +10,8 @@ extern pcb_PTR current_process[NCPU];
 extern struct list_head ready_queue;
 extern void print(char *msg);
 extern int debug;
+extern void klog_print(char *str);
+int cpu_id;
 
 /**
  * Scheduler - Seleziona il prossimo processo da eseguire
@@ -24,10 +26,10 @@ extern int debug;
  * - Gestisce correttamente TPR (Task Priority Register)
  */
 void schedule() {
-    int cpu_id = getPRID();
+    cpu_id = getPRID();
     // dispatch the next process
     current_process[cpu_id] = removeProcQ(&ready_queue);
-    
+    //HALT();
     if (current_process[cpu_id]!= NULL) {
         // load the PLT
         setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));

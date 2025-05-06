@@ -19,6 +19,7 @@ set(CMAKE_ASM_TARGET_INCLUDE_PATH
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/home/alessandro/MultiPandOS/klog.c" "CMakeFiles/MultiPandOS.dir/klog.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/klog.c.o.d"
   "/home/alessandro/MultiPandOS/phase1/asl.c" "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase1/asl.c.o.d"
   "/home/alessandro/MultiPandOS/phase1/pcb.c" "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o.d"
   "/home/alessandro/MultiPandOS/phase2/exceptions.c" "CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o" "gcc" "CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o.d"
