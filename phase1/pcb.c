@@ -73,12 +73,19 @@ pcb_t* allocPcb() {
         INIT_LIST_HEAD(&tmp->p_list);
         INIT_LIST_HEAD(&tmp->p_child);
         INIT_LIST_HEAD(&tmp->p_sib);
+        tmp->p_s.cause = 0;
+        tmp->p_s.status = ALLOFF;
+        tmp->p_s.entry_hi = 0;
+        for(int i = 0; i < STATE_GPR_LEN ; i++){
+            tmp->p_s.gpr[i] = 0;
+        }
+        tmp->p_s.mie = 0;
+        tmp->p_s.pc_epc = 0;
         tmp->p_parent = NULL;
         tmp->p_time = 0;
         tmp->p_supportStruct = NULL;
         tmp->p_pid = next_pid;
         next_pid++;
-        tmp->p_s.status = ALLOFF;
         return tmp;
     }
 }
